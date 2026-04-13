@@ -106,6 +106,8 @@ export default function LoginPage() {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
+                name="username"
+                id="username"
                 value={teacherCode}
                 onChange={(e) => setTeacherCode(e.target.value)}
                 autoComplete="username"
@@ -117,6 +119,8 @@ export default function LoginPage() {
               <label className="block text-lg font-semibold text-gray-700 mb-2">パスワード</label>
               <input
                 type="password"
+                name="password"
+                id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
