@@ -149,7 +149,7 @@ export default function AttendancePage() {
               <Row label="日付" value={TODAY} />
               <Row label="校舎" value={selectedCampus.name} />
               <Row label="授業コマ数" value={selectedPeriods === 0 ? '授業なし' : `${selectedPeriods}コマ`} />
-              <Row label="業務時間" value={`${workMinutes}分`} note="事業準備・片付け含む" />
+              <Row label="業務時間" value={`${workMinutes}分`} note="授業準備・片付け含む" />
               {extraMinutes > 0 && (
                 <Row label="その他業務時間" value={`${extraMinutes}分`} />
               )}
@@ -183,7 +183,9 @@ export default function AttendancePage() {
 
             {/* 校舎選択 */}
             <section className="bg-white rounded-2xl shadow p-5">
-              <h2 className="text-xl font-bold text-gray-700 mb-4">校舎を選んでください</h2>
+              {!selectedCampus && (
+                <h2 className="text-xl font-bold text-gray-700 mb-4">校舎を選んでください</h2>
+              )}
               {campuses.length === 0 ? (
                 <p className="text-gray-400 text-lg text-center py-4">
                   校舎データがまだ登録されていません
@@ -202,7 +204,7 @@ export default function AttendancePage() {
                           {selectedCampus.name}
                         </div>
                         <p className="text-center text-base text-gray-500 px-2">
-                          事業準備のため、業務時間が
+                          授業準備のため、業務時間が
                           <span className="font-bold text-gray-700">自動で {selectedCampus.cleanup_minutes}分</span>
                           追加されます
                         </p>

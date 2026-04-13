@@ -108,6 +108,7 @@ export default function LoginPage() {
                 pattern="[0-9]*"
                 value={teacherCode}
                 onChange={(e) => setTeacherCode(e.target.value)}
+                autoComplete="username"
                 className="w-full border-2 border-gray-300 rounded-xl px-3 py-4 text-center text-3xl tracking-widest focus:outline-none focus:border-[#F5C200]"
                 required
               />
@@ -118,6 +119,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
                 className="w-full border-2 border-gray-300 rounded-xl px-3 py-4 text-xl focus:outline-none focus:border-[#F5C200]"
                 placeholder="パスワードを入力"
                 required

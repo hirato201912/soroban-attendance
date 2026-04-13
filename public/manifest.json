@@ -1,0 +1,21 @@
+{
+  "name": "そろばん塾ピコ 勤怠管理",
+  "short_name": "ピコ勤怠",
+  "description": "そろばん塾ピコ 講師勤怠管理システム",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#F5C200",
+  "icons": [
+    {
+      "src": "/pico.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pico.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
