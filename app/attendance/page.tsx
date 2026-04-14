@@ -31,6 +31,7 @@ export default function AttendancePage() {
   const [selectedCampus, setSelectedCampus] = useState<Campus | null>(null)
   const [selectedPeriods, setSelectedPeriods] = useState<number | null>(null)
   const [extraMinutes, setExtraMinutes] = useState(0)
+  const [duplicateError, setDuplicateError] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('soroban_teacher')
@@ -57,6 +58,23 @@ export default function AttendancePage() {
   const handleSubmit = async () => {
     if (!teacher || !selectedCampus || selectedPeriods == null) return
     setSubmitting(true)
+    setDuplicateError(false)
+
+    // 重複チェック：同じ先生・同じ校舎・同じ日
+    const { data: existing } = await supabase
+      .from('soroban_attendances')
+      .select('id')
+      .eq('teacher_id', teacher.id)
+      .eq('campus_id', selectedCampus.id)
+      .eq('date', TODAY)
+      .maybeSingle()
+
+    if (existing) {
+      setDuplicateError(true)
+      setSubmitting(false)
+      setStep('form')
+      return
+    }
 
     const { error } = await supabase.from('soroban_attendances').insert({
       teacher_id: teacher.id,
@@ -81,6 +99,7 @@ export default function AttendancePage() {
     setSelectedCampus(null)
     setSelectedPeriods(null)
     setExtraMinutes(0)
+    setDuplicateError(false)
     setStep('form')
   }
 
@@ -127,17 +146,25 @@ export default function AttendancePage() {
 
         {/* 完了画面 */}
         {step === 'done' && (
-          <div className="bg-white rounded-2xl shadow p-8 text-center">
-            <p className="text-6xl mb-4">✅</p>
-            <p className="text-2xl font-bold text-gray-800 mb-2">送信しました</p>
-            <p className="text-gray-500 text-lg mb-8">お疲れ様でした！</p>
-            <button
-              onClick={resetForm}
-              className="w-full py-5 rounded-xl text-gray-900 font-bold text-xl"
-              style={{ backgroundColor: MAIN_COLOR }}
-            >
-              続けて入力する
-            </button>
+          <div className="bg-white rounded-2xl shadow p-8 text-center space-y-4">
+            <p className="text-6xl mb-2">✅</p>
+            <p className="text-2xl font-bold text-gray-800">送信しました</p>
+            <p className="text-gray-500 text-lg">お疲れ様でした！</p>
+            <div className="pt-4 space-y-3">
+              <button
+                onClick={() => router.push('/history')}
+                className="w-full py-5 rounded-xl text-gray-900 font-bold text-xl"
+                style={{ backgroundColor: MAIN_COLOR }}
+              >
+                勤務履歴を確認する
+              </button>
+              <button
+                onClick={resetForm}
+                className="w-full py-4 rounded-xl border-2 border-gray-300 text-gray-600 font-semibold text-lg"
+              >
+                別の校舎を入力する
+              </button>
+            </div>
           </div>
         )}
 
@@ -174,6 +201,14 @@ export default function AttendancePage() {
         {/* 入力フォーム */}
         {step === 'form' && (
           <div className="space-y-6">
+
+            {/* 重複エラー */}
+            {duplicateError && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-center">
+                <p className="text-red-600 font-bold text-lg">この校舎の本日の記録はすでに送信されています</p>
+                <p className="text-red-400 text-base mt-1">別の校舎を選んでください</p>
+              </div>
+            )}
 
             {/* 今日の日付 */}
             <div className="bg-white rounded-2xl shadow px-5 py-4 text-center">

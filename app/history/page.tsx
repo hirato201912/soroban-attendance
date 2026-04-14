@@ -16,6 +16,12 @@ const CAMPUS_COLORS: Record<string, { bg: string; border: string; text: string }
 }
 const DEFAULT_COLOR = { bg: '#F9FAFB', border: '#9CA3AF', text: '#374151' }
 
+function formatDate(d: string) {
+  const date = new Date(d + 'T00:00:00')
+  const day = '日月火水木金土'[date.getDay()]
+  return `${date.getMonth() + 1}月${date.getDate()}日（${day}）`
+}
+
 export default function HistoryPage() {
   const router = useRouter()
   const [teacher, setTeacher] = useState<LoggedInTeacher | null>(null)
@@ -51,6 +57,7 @@ export default function HistoryPage() {
     fetchRecords(t.id)
   }, [router, fetchRecords])
 
+  // 月間集計
   const totalPeriods = records.reduce((s, r) => s + r.periods, 0)
   const totalWorkMinutes = records.reduce((s, r) => s + r.work_minutes, 0)
   const totalExtraMinutes = records.reduce((s, r) => s + r.extra_minutes, 0)
@@ -63,6 +70,14 @@ export default function HistoryPage() {
     acc[name].days += 1
     return acc
   }, {})
+
+  // 日付でグループ化
+  const grouped = records.reduce<Record<string, AttendanceWithRelations[]>>((acc, rec) => {
+    if (!acc[rec.date]) acc[rec.date] = []
+    acc[rec.date].push(rec)
+    return acc
+  }, {})
+  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a))
 
   const changeMonth = (delta: number) => {
     let m = month + delta
@@ -151,42 +166,58 @@ export default function HistoryPage() {
           )}
         </div>
 
-        {/* 記録一覧 */}
+        {/* 勤務記録（日付でグループ化） */}
         {loading ? (
           <p className="text-center text-xl text-gray-400 py-10">読み込み中...</p>
-        ) : records.length === 0 ? (
+        ) : sortedDates.length === 0 ? (
           <p className="text-center text-xl text-gray-400 py-10">この月の記録はありません</p>
         ) : (
           <div className="space-y-3">
             <h2 className="text-lg font-bold text-gray-600">勤務記録</h2>
-            {records.map((rec) => {
-              const color = CAMPUS_COLORS[rec.campus.name] ?? DEFAULT_COLOR
+            {sortedDates.map((date) => {
+              const dayRecords = grouped[date]
+              const dayTotalPeriods = dayRecords.reduce((s, r) => s + r.periods, 0)
+
               return (
-                <div
-                  key={rec.id}
-                  className="bg-white rounded-2xl shadow overflow-hidden border-l-4"
-                  style={{ borderColor: color.border }}
-                >
-                  {/* 校舎名バー */}
-                  <div className="px-5 py-3" style={{ backgroundColor: color.bg }}>
-                    <span className="text-xl font-bold" style={{ color: color.text }}>
-                      {rec.campus.name}
-                    </span>
+                <div key={date} className="bg-white rounded-2xl shadow overflow-hidden">
+                  {/* 日付ヘッダー */}
+                  <div
+                    className="px-5 py-3 flex items-center justify-between"
+                    style={{ backgroundColor: '#FFF9E0' }}
+                  >
+                    <p className="text-lg font-bold text-gray-800">{formatDate(date)}</p>
+                    <div className="text-right">
+                      <span className="text-xl font-bold" style={{ color: '#b08800' }}>{dayTotalPeriods}</span>
+                      <span className="text-sm text-gray-500 ml-1">コマ</span>
+                    </div>
                   </div>
-                  {/* 詳細 */}
-                  <div className="px-5 py-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-lg text-gray-500">{rec.date}</span>
-                      <span className="text-2xl font-bold text-gray-800">
-                        {rec.periods === 0 ? '授業なし' : `${rec.periods}コマ`}
-                      </span>
-                    </div>
-                    <div className="flex gap-4 text-base text-gray-500 mt-1">
-                      <span>業務時間 {rec.work_minutes}分</span>
-                      {rec.extra_minutes > 0 && (
-                        <span>その他 {rec.extra_minutes}分</span>
-                      )}
-                    </div>
+
+                  {/* その日の校舎ごとの記録 */}
+                  <div className="divide-y divide-gray-100">
+                    {dayRecords.map((rec) => {
+                      const color = CAMPUS_COLORS[rec.campus.name] ?? DEFAULT_COLOR
+                      return (
+                        <div key={rec.id} className="flex items-center gap-3 px-5 py-3">
+                          {/* 校舎バッジ */}
+                          <span
+                            className="text-sm font-bold px-3 py-1.5 rounded-lg shrink-0 border-l-4"
+                            style={{ backgroundColor: color.bg, borderColor: color.border, color: color.text }}
+                          >
+                            {rec.campus.name}
+                          </span>
+                          {/* 内容 */}
+                          <div className="flex-1 text-base text-gray-700">
+                            {rec.periods === 0 ? '授業なし' : `${rec.periods}コマ`}
+                            {rec.work_minutes > 0 && (
+                              <span className="ml-2 text-sm text-gray-400">業務{rec.work_minutes}分</span>
+                            )}
+                            {rec.extra_minutes > 0 && (
+                              <span className="ml-2 text-sm text-gray-400">その他{rec.extra_minutes}分</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )
