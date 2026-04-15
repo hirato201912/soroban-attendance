@@ -157,10 +157,13 @@ export default function AdminPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('このレコードを削除しますか？')) return
-    setDeleting(id)
+    // 即座にUIから削除
+    setSelectedTeacher(prev => prev ? { ...prev, records: prev.records.filter(r => r.id !== id) } : null)
+    setSummaries(prev => prev.map(s => ({ ...s, records: s.records.filter(r => r.id !== id) })))
+    if (editTarget?.id === id) setEditTarget(null)
+    // DBに反映・集計値を再同期
     await supabase.from('soroban_attendances').delete().eq('id', id)
-    setDeleting(null)
-    await fetchData()
+    fetchData()
   }
 
   return (
@@ -427,10 +430,9 @@ export default function AdminPage() {
                               </button>
                               <button
                                 onClick={() => handleDelete(rec.id)}
-                                disabled={deleting === rec.id}
-                                className="text-sm px-4 py-2 rounded-lg border border-red-200 text-red-400 font-medium hover:bg-red-50 disabled:opacity-40"
+                                className="text-sm px-4 py-2 rounded-lg border border-red-200 text-red-400 font-medium hover:bg-red-50"
                               >
-                                {deleting === rec.id ? '削除中' : '削除'}
+                                削除
                               </button>
                             </td>
                           </tr>
