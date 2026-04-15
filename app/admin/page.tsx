@@ -36,12 +36,14 @@ export default function AdminPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const firstDay = `${year}-${String(month).padStart(2, '0')}-01`
-    const lastDay = new Date(year, month, 0).toISOString().split('T')[0]
+    const mm = String(month).padStart(2, '0')
+    const firstDay = `${year}-${mm}-01`
+    const lastDayNum = new Date(year, month, 0).getDate()
+    const lastDay = `${year}-${mm}-${String(lastDayNum).padStart(2, '0')}`
 
     const { data } = await supabase
       .from('soroban_attendances')
-      .select('*, teacher:itoshima_teachers(id, name, code), campus:soroban_campuses(id, name, minutes_per_period)')
+      .select('*, teacher:itoshima_teachers(id, name, code), campus:soroban_campuses(id, name, cleanup_minutes)')
       .gte('date', firstDay)
       .lte('date', lastDay)
       .order('date', { ascending: false })
