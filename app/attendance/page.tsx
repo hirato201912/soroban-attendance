@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import type { LoggedInTeacher, Campus } from '@/types'
 
 const MAIN_COLOR = '#F5C200'
-const TODAY = new Date().toISOString().split('T')[0]
+const TODAY = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
 
 // 校舎ごとの色（未選択時の背景・選択時の背景）
 const CAMPUS_COLORS: Record<string, { bg: string; activeBg: string; text: string }> = {
