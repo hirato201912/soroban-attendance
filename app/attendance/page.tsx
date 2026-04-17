@@ -13,7 +13,7 @@ const CAMPUS_COLORS: Record<string, { bg: string; activeBg: string; text: string
   '前原前校': { bg: '#DBEAFE', activeBg: '#3B82F6', text: '#1D4ED8' },
   '可也校':   { bg: '#D1FAE5', activeBg: '#10B981', text: '#065F46' },
   '南校':     { bg: '#EDE9FE', activeBg: '#8B5CF6', text: '#5B21B6' },
-  '春風校':   { bg: '#FCE7F3', activeBg: '#EC4899', text: '#9D174D' },
+  '東風校':   { bg: '#FCE7F3', activeBg: '#EC4899', text: '#9D174D' },
   '東校':     { bg: '#CFFAFE', activeBg: '#06B6D4', text: '#155E75' },
 }
 const DEFAULT_CAMPUS_COLOR = { bg: '#F3F4F6', activeBg: '#6B7280', text: '#374151' }
