@@ -7,6 +7,7 @@ import type { LoggedInTeacher, Campus } from '@/types'
 
 const MAIN_COLOR = '#F5C200'
 const TODAY = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
+const TODAY_DOW = new Date(TODAY + 'T00:00:00').getDay() // 0=日, 4=木
 
 // 校舎ごとの色（未選択時の背景・選択時の背景）
 const CAMPUS_COLORS: Record<string, { bg: string; activeBg: string; text: string }> = {
@@ -50,8 +51,12 @@ export default function AttendancePage() {
       })
   }, [router])
 
-  // 業務時間 = 片付け時間（1日一律・コマ数に関係なし）
-  const workMinutes = selectedCampus ? selectedCampus.cleanup_minutes : 0
+  // 業務時間 = 1コマ×cleanup_minutes分。東校の木曜は最低30分
+  const workMinutes = (() => {
+    if (!selectedCampus || selectedPeriods == null || selectedPeriods === 0) return 0
+    const base = selectedPeriods * selectedCampus.cleanup_minutes
+    return selectedCampus.name === '東校' && TODAY_DOW === 4 ? Math.max(base, 30) : base
+  })()
 
   const canConfirm = selectedCampus !== null && selectedPeriods !== null
 
@@ -239,9 +244,10 @@ export default function AttendancePage() {
                           {selectedCampus.name}
                         </div>
                         <p className="text-center text-base text-gray-500 px-2">
-                          授業準備のため、業務時間が
-                          <span className="font-bold text-gray-700">自動で {selectedCampus.cleanup_minutes}分</span>
-                          追加されます
+                          {selectedCampus.name === '東校' && TODAY_DOW === 4
+                            ? <>木曜は<span className="font-bold text-gray-700">1コマでも30分</span>の業務時間が自動で追加されます</>
+                            : <>1コマにつき<span className="font-bold text-gray-700">{selectedCampus.cleanup_minutes}分</span>の業務時間が自動で追加されます</>
+                          }
                         </p>
                       </>
                     )

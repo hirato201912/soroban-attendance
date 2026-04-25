@@ -135,7 +135,14 @@ export default function AdminPage() {
     if (!editTarget) return
     setSaving(true)
     const campus = campuses.find(c => c.id === editTarget._editCampusId)
-    const newWorkMinutes = campus ? campus.cleanup_minutes : editTarget.work_minutes
+    let newWorkMinutes = editTarget.work_minutes
+    if (campus) {
+      const dow = new Date(editTarget._editDate + 'T00:00:00').getDay()
+      const base = editTarget._editPeriods > 0 ? editTarget._editPeriods * campus.cleanup_minutes : 0
+      newWorkMinutes = campus.name === '東校' && dow === 4 && editTarget._editPeriods > 0
+        ? Math.max(base, 30)
+        : base
+    }
 
     const { error } = await supabase
       .from('soroban_attendances')
