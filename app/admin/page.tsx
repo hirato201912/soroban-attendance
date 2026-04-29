@@ -131,7 +131,7 @@ export default function AdminPage() {
     })
 
     supabase.from('itoshima_teachers').select('id, name, code')
-      .eq('is_soroban_admin', false).order('code')
+      .eq('is_soroban', true).order('code')
       .then(({ data }) => setAllTeachers((data ?? []) as SimpleTeacher[]))
 
     fetchData()
@@ -261,7 +261,7 @@ export default function AdminPage() {
         <div className="flex gap-5 items-start">
 
           {/* 左：全講師一覧 */}
-          <div className="w-80 shrink-0 space-y-2">
+          <div className="w-80 shrink-0 sticky top-4 max-h-[calc(100vh-6rem)] overflow-y-auto space-y-2">
             {loading ? (
               <p className="text-center text-gray-400 py-10">読み込み中...</p>
             ) : allTeachers.length === 0 ? (
