@@ -13,7 +13,7 @@ const CAMPUS_COLORS: Record<string, { bg: string; border: string; text: string }
   '可也校':   { bg: '#ECFDF5', border: '#10B981', text: '#065F46' },
   '南校':     { bg: '#F5F3FF', border: '#8B5CF6', text: '#5B21B6' },
   '東風校':   { bg: '#FDF2F8', border: '#EC4899', text: '#9D174D' },
-  '東校':     { bg: '#ECFEFF', border: '#06B6D4', text: '#155E75' },
+  '東校(GC)':     { bg: '#ECFEFF', border: '#06B6D4', text: '#155E75' },
 }
 const DEFAULT_COLOR = { bg: '#F9FAFB', border: '#9CA3AF', text: '#374151' }
 
@@ -55,7 +55,7 @@ function calcWorkMinutes(campus: Campus, periods: number, dateStr: string): numb
   if (periods === 0) return 0
   const dow = new Date(dateStr + 'T00:00:00').getDay()
   const base = periods * campus.cleanup_minutes
-  return campus.name === '東校' && dow === 4 ? Math.max(base, 30) : base
+  return campus.name === '東校(GC)' && dow === 4 ? Math.max(base, 30) : base
 }
 
 export default function AdminPage() {
@@ -88,7 +88,7 @@ export default function AdminPage() {
       .select('*, teacher:itoshima_teachers(id, name, code), campus:soroban_campuses(id, name, cleanup_minutes)')
       .gte('date', firstDay)
       .lte('date', lastDay)
-      .order('date', { ascending: false })
+      .order('date', { ascending: true })
 
     const records = (data as AttendanceWithRelations[]) ?? []
 

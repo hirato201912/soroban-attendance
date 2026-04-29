@@ -15,7 +15,7 @@ const CAMPUS_COLORS: Record<string, { bg: string; activeBg: string; text: string
   '可也校':   { bg: '#D1FAE5', activeBg: '#10B981', text: '#065F46' },
   '南校':     { bg: '#EDE9FE', activeBg: '#8B5CF6', text: '#5B21B6' },
   '東風校':   { bg: '#FCE7F3', activeBg: '#EC4899', text: '#9D174D' },
-  '東校':     { bg: '#CFFAFE', activeBg: '#06B6D4', text: '#155E75' },
+  '東校(GC)':     { bg: '#CFFAFE', activeBg: '#06B6D4', text: '#155E75' },
 }
 const DEFAULT_CAMPUS_COLOR = { bg: '#F3F4F6', activeBg: '#6B7280', text: '#374151' }
 
@@ -55,7 +55,7 @@ export default function AttendancePage() {
   const workMinutes = (() => {
     if (!selectedCampus || selectedPeriods == null || selectedPeriods === 0) return 0
     const base = selectedPeriods * selectedCampus.cleanup_minutes
-    return selectedCampus.name === '東校' && TODAY_DOW === 4 ? Math.max(base, 30) : base
+    return selectedCampus.name === '東校(GC)' && TODAY_DOW === 4 ? Math.max(base, 30) : base
   })()
 
   const canConfirm = selectedCampus !== null && selectedPeriods !== null
@@ -244,7 +244,7 @@ export default function AttendancePage() {
                           {selectedCampus.name}
                         </div>
                         <p className="text-center text-base text-gray-500 px-2">
-                          {selectedCampus.name === '東校' && TODAY_DOW === 4
+                          {selectedCampus.name === '東校(GC)' && TODAY_DOW === 4
                             ? <>木曜は<span className="font-bold text-gray-700">1コマでも30分</span>の業務時間が自動で追加されます</>
                             : <>1コマにつき<span className="font-bold text-gray-700">{selectedCampus.cleanup_minutes}分</span>の業務時間が自動で追加されます</>
                           }
