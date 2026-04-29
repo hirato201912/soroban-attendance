@@ -58,6 +58,14 @@ function calcWorkMinutes(campus: Campus, periods: number, dateStr: string): numb
   return campus.name === '東校(GC)' && dow === 4 ? Math.max(base, 30) : base
 }
 
+function fmtMin(min: number): string {
+  if (min === 0) return '0分'
+  if (min < 60) return `${min}分`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m === 0 ? `${h}時間` : `${h}時間${m}分`
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [teacher, setTeacher] = useState<LoggedInTeacher | null>(null)
@@ -311,7 +319,7 @@ export default function AdminPage() {
                     <p className="text-xl font-bold text-gray-800">{selectedTeacher.name} 先生</p>
                     <p className="text-sm text-gray-500 mt-0.5">
                       {selectedTeacher.totalPeriods > 0
-                        ? <>合計 {selectedTeacher.totalPeriods}コマ　業務 {selectedTeacher.totalWorkMinutes}分{selectedTeacher.totalExtraMinutes > 0 && `　その他 ${selectedTeacher.totalExtraMinutes}分`}</>
+                        ? <>合計 {selectedTeacher.totalPeriods}コマ　業務 {fmtMin(selectedTeacher.totalWorkMinutes)}{selectedTeacher.totalExtraMinutes > 0 && `　その他 ${fmtMin(selectedTeacher.totalExtraMinutes)}`}</>
                         : 'この月の記録はありません'
                       }
                     </p>
@@ -334,6 +342,38 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* 校舎別集計（複数校舎の場合のみ） */}
+                {selectedTeacher.records.length > 0 && (() => {
+                  const campusMap = new Map<string, { periods: number; workMin: number; extraMin: number }>()
+                  for (const rec of selectedTeacher.records) {
+                    const k = rec.campus.name
+                    if (!campusMap.has(k)) campusMap.set(k, { periods: 0, workMin: 0, extraMin: 0 })
+                    const s = campusMap.get(k)!
+                    s.periods += rec.periods; s.workMin += rec.work_minutes; s.extraMin += rec.extra_minutes
+                  }
+                  const subs = Array.from(campusMap.entries())
+                  if (subs.length < 2) return null
+                  return (
+                    <div className="bg-white rounded-2xl shadow px-6 py-4">
+                      <p className="text-xs font-bold text-gray-400 mb-3">校舎別集計</p>
+                      <div className="flex flex-wrap gap-3">
+                        {subs.map(([name, sub]) => {
+                          const color = CAMPUS_COLORS[name] ?? DEFAULT_COLOR
+                          return (
+                            <div key={name} className="rounded-xl px-4 py-2 border-l-4" style={{ backgroundColor: color.bg, borderColor: color.border }}>
+                              <p className="font-bold text-sm" style={{ color: color.text }}>{name}</p>
+                              <p className="text-xs text-gray-600 mt-0.5">
+                                {sub.periods}コマ　業務 {fmtMin(sub.workMin)}
+                                {sub.extraMin > 0 && `　その他 ${fmtMin(sub.extraMin)}`}
+                              </p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* 新規追加フォーム */}
                 {isAdding && (
@@ -572,8 +612,8 @@ export default function AdminPage() {
                           <th className="text-left px-6 py-3 text-sm font-bold text-gray-600">日付</th>
                           <th className="text-left px-4 py-3 text-sm font-bold text-gray-600">校舎</th>
                           <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">コマ数</th>
-                          <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">業務(分)</th>
-                          <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">その他(分)</th>
+                          <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">業務時間</th>
+                          <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">その他時間</th>
                           <th className="px-4 py-3"></th>
                         </tr>
                       </thead>
@@ -602,10 +642,10 @@ export default function AdminPage() {
                                 {rec.periods === 0 ? '授業なし' : `${rec.periods}コマ`}
                               </td>
                               <td className="px-4 py-4 text-center text-base text-gray-600">
-                                {rec.work_minutes}
+                                {fmtMin(rec.work_minutes)}
                               </td>
                               <td className="px-4 py-4 text-center text-base text-gray-600">
-                                {rec.extra_minutes > 0 ? rec.extra_minutes : '−'}
+                                {rec.extra_minutes > 0 ? fmtMin(rec.extra_minutes) : '−'}
                               </td>
                               <td className="px-4 py-4 text-right whitespace-nowrap">
                                 <button
@@ -626,6 +666,17 @@ export default function AdminPage() {
                           )
                         })}
                       </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-300" style={{ backgroundColor: '#FFF9E0' }}>
+                          <td colSpan={2} className="px-6 py-3 text-sm font-bold text-gray-700">月合計</td>
+                          <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">{selectedTeacher.totalPeriods}コマ</td>
+                          <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">{fmtMin(selectedTeacher.totalWorkMinutes)}</td>
+                          <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">
+                            {selectedTeacher.totalExtraMinutes > 0 ? fmtMin(selectedTeacher.totalExtraMinutes) : '−'}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 )}
