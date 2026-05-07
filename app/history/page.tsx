@@ -22,6 +22,14 @@ function formatDate(d: string) {
   return `${date.getMonth() + 1}月${date.getDate()}日（${day}）`
 }
 
+function fmtMin(min: number): string {
+  if (min === 0) return '0分'
+  if (min < 60) return `${min}分`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m === 0 ? `${h}時間` : `${h}時間${m}分`
+}
+
 export default function HistoryPage() {
   const router = useRouter()
   const [teacher, setTeacher] = useState<LoggedInTeacher | null>(null)
@@ -125,19 +133,21 @@ export default function HistoryPage() {
         {/* 月間合計 */}
         <div className="bg-white rounded-2xl shadow p-5">
           <h2 className="text-lg font-bold text-gray-600 mb-4">月間合計</h2>
-          <div className="grid grid-cols-3 gap-3 text-center mb-5">
-            <div className="rounded-xl py-4" style={{ backgroundColor: '#FFF9E0' }}>
-              <p className="text-3xl font-bold" style={{ color: '#b08800' }}>{totalPeriods}</p>
-              <p className="text-base text-gray-600 mt-1">コマ</p>
+          <div className={`grid gap-3 text-center mb-5 ${totalExtraMinutes > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            <div className="rounded-xl py-4 px-2" style={{ backgroundColor: '#FFF9E0' }}>
+              <p className="text-2xl font-bold leading-tight" style={{ color: '#b08800' }}>{totalPeriods}コマ</p>
+              <p className="text-sm text-gray-600 mt-1">授業</p>
             </div>
-            <div className="rounded-xl py-4" style={{ backgroundColor: '#FFF9E0' }}>
-              <p className="text-3xl font-bold" style={{ color: '#b08800' }}>{totalWorkMinutes}</p>
-              <p className="text-base text-gray-600 mt-1">業務(分)</p>
+            <div className="rounded-xl py-4 px-2" style={{ backgroundColor: '#FFF9E0' }}>
+              <p className="text-2xl font-bold leading-tight" style={{ color: '#b08800' }}>{fmtMin(totalWorkMinutes)}</p>
+              <p className="text-sm text-gray-600 mt-1">業務時間</p>
             </div>
-            <div className="rounded-xl py-4" style={{ backgroundColor: '#FFF9E0' }}>
-              <p className="text-3xl font-bold" style={{ color: '#b08800' }}>{totalExtraMinutes}</p>
-              <p className="text-base text-gray-600 mt-1">その他(分)</p>
-            </div>
+            {totalExtraMinutes > 0 && (
+              <div className="rounded-xl py-4 px-2" style={{ backgroundColor: '#FFF9E0' }}>
+                <p className="text-2xl font-bold leading-tight" style={{ color: '#b08800' }}>{fmtMin(totalExtraMinutes)}</p>
+                <p className="text-sm text-gray-600 mt-1">その他</p>
+              </div>
+            )}
           </div>
 
           {/* 校舎別内訳 */}
@@ -150,10 +160,13 @@ export default function HistoryPage() {
                   return (
                     <div
                       key={name}
-                      className="flex items-center justify-between rounded-xl px-4 py-3 border-l-4"
-                      style={{ backgroundColor: color.bg, borderColor: color.border }}
+                      className="flex items-center justify-between rounded-xl px-4 py-3"
+                      style={{ backgroundColor: color.bg }}
                     >
-                      <span className="text-lg font-bold" style={{ color: color.text }}>{name}</span>
+                      <span className="flex items-center gap-2.5 text-lg font-bold" style={{ color: color.text }}>
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color.border }} />
+                        {name}
+                      </span>
                       <div className="text-right">
                         <span className="text-lg font-bold text-gray-800">{periods}コマ</span>
                         <span className="text-sm text-gray-500 ml-2">（{days}日）</span>
@@ -168,7 +181,13 @@ export default function HistoryPage() {
 
         {/* 勤務記録（日付でグループ化） */}
         {loading ? (
-          <p className="text-center text-xl text-gray-400 py-10">読み込み中...</p>
+          <div className="flex items-center justify-center gap-3 py-10">
+            <span
+              className="block w-7 h-7 border-4 border-gray-200 rounded-full animate-spin"
+              style={{ borderTopColor: '#F5C200' }}
+            />
+            <span className="text-lg text-gray-500">読み込み中</span>
+          </div>
         ) : sortedDates.length === 0 ? (
           <p className="text-center text-xl text-gray-400 py-10">この月の記録はありません</p>
         ) : (
@@ -200,19 +219,20 @@ export default function HistoryPage() {
                         <div key={rec.id} className="flex items-center gap-3 px-5 py-3">
                           {/* 校舎バッジ */}
                           <span
-                            className="text-sm font-bold px-3 py-1.5 rounded-lg shrink-0 border-l-4"
-                            style={{ backgroundColor: color.bg, borderColor: color.border, color: color.text }}
+                            className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: color.bg, color: color.text }}
                           >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color.border }} />
                             {rec.campus.name}
                           </span>
                           {/* 内容 */}
                           <div className="flex-1 text-base text-gray-700">
                             {rec.periods === 0 ? '授業なし' : `${rec.periods}コマ`}
                             {rec.work_minutes > 0 && (
-                              <span className="ml-2 text-sm text-gray-400">業務{rec.work_minutes}分</span>
+                              <span className="ml-2 text-sm text-gray-400">業務{fmtMin(rec.work_minutes)}</span>
                             )}
                             {rec.extra_minutes > 0 && (
-                              <span className="ml-2 text-sm text-gray-400">その他{rec.extra_minutes}分</span>
+                              <span className="ml-2 text-sm text-gray-400">その他{fmtMin(rec.extra_minutes)}</span>
                             )}
                           </div>
                         </div>

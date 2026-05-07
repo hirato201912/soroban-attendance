@@ -79,6 +79,7 @@ export default function AdminPage() {
   const [isAdding, setIsAdding] = useState(false)
   const [newRecord, setNewRecord] = useState<NewRecordForm>({ date: TODAY_JST, campusId: '', periods: 1, extraMinutes: 0, notes: '' })
   const [addSaving, setAddSaving] = useState(false)
+  const [errorBanner, setErrorBanner] = useState<string | null>(null)
 
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -199,7 +200,7 @@ export default function AdminPage() {
       })
       .eq('id', editTarget.id)
 
-    if (error) { alert('更新に失敗しました'); setSaving(false); return }
+    if (error) { setErrorBanner('更新に失敗しました'); setSaving(false); return }
     setEditTarget(null)
     setSaving(false)
     await fetchData()
@@ -221,7 +222,7 @@ export default function AdminPage() {
       notes: newRecord.notes.trim() || null,
     })
 
-    if (error) { alert('追加に失敗しました'); setAddSaving(false); return }
+    if (error) { setErrorBanner('追加に失敗しました'); setAddSaving(false); return }
     setIsAdding(false)
     setNewRecord({ date: TODAY_JST, campusId: campuses[0]?.id ?? '', periods: 1, extraMinutes: 0, notes: '' })
     setAddSaving(false)
@@ -265,13 +266,31 @@ export default function AdminPage() {
           <p className="ml-4 text-gray-400 text-sm">講師名をクリックすると詳細・編集できます</p>
         </div>
 
+        {errorBanner && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-3 flex items-center justify-between">
+            <span className="text-red-600 font-medium">{errorBanner}</span>
+            <button
+              onClick={() => setErrorBanner(null)}
+              className="text-red-500 hover:text-red-700 text-sm font-medium underline"
+            >
+              閉じる
+            </button>
+          </div>
+        )}
+
         {/* メインエリア：左リスト＋右詳細 */}
         <div className="flex gap-5 items-start">
 
           {/* 左：全講師一覧 */}
           <div className="w-80 shrink-0 sticky top-4 max-h-[calc(100vh-6rem)] overflow-y-auto space-y-2">
             {loading ? (
-              <p className="text-center text-gray-400 py-10">読み込み中...</p>
+              <div className="flex items-center justify-center gap-3 py-10">
+                <span
+                  className="block w-6 h-6 border-4 border-gray-200 rounded-full animate-spin"
+                  style={{ borderTopColor: '#F5C200' }}
+                />
+                <span className="text-gray-500">読み込み中</span>
+              </div>
             ) : allTeachers.length === 0 ? (
               <p className="text-center text-gray-400 py-10">講師データがありません</p>
             ) : (
@@ -291,9 +310,9 @@ export default function AdminPage() {
                     <p className="font-bold text-gray-800 text-lg">{t.name}</p>
                     {s ? (
                       <div className="mt-1 text-sm text-gray-500 space-y-0.5">
-                        <p>{s.totalPeriods}コマ　業務 {s.totalWorkMinutes}分</p>
-                        {s.totalExtraMinutes > 0 && <p>その他 {s.totalExtraMinutes}分</p>}
-                        <p>{s.records.length}件の記録</p>
+                        <p>{s.totalPeriods}コマ　業務 {fmtMin(s.totalWorkMinutes)}</p>
+                        {s.totalExtraMinutes > 0 && <p>その他 {fmtMin(s.totalExtraMinutes)}</p>}
+                        <p>{new Set(s.records.map(r => r.date)).size}日勤務</p>
                       </div>
                     ) : (
                       <p className="mt-1 text-sm text-gray-400">この月の記録なし</p>
@@ -361,9 +380,12 @@ export default function AdminPage() {
                         {subs.map(([name, sub]) => {
                           const color = CAMPUS_COLORS[name] ?? DEFAULT_COLOR
                           return (
-                            <div key={name} className="rounded-xl px-4 py-2 border-l-4" style={{ backgroundColor: color.bg, borderColor: color.border }}>
-                              <p className="font-bold text-sm" style={{ color: color.text }}>{name}</p>
-                              <p className="text-xs text-gray-600 mt-0.5">
+                            <div key={name} className="rounded-xl px-4 py-2.5" style={{ backgroundColor: color.bg }}>
+                              <p className="font-bold text-sm flex items-center gap-2" style={{ color: color.text }}>
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color.border }} />
+                                {name}
+                              </p>
+                              <p className="text-xs text-gray-600 mt-1 pl-4">
                                 {sub.periods}コマ　業務 {fmtMin(sub.workMin)}
                                 {sub.extraMin > 0 && `　その他 ${fmtMin(sub.extraMin)}`}
                               </p>
@@ -632,9 +654,10 @@ export default function AdminPage() {
                               </td>
                               <td className="px-4 py-4">
                                 <span
-                                  className="text-sm font-bold px-3 py-1 rounded-lg border-l-4"
-                                  style={{ backgroundColor: color.bg, borderColor: color.border, color: color.text }}
+                                  className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full"
+                                  style={{ backgroundColor: color.bg, color: color.text }}
                                 >
+                                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color.border }} />
                                   {rec.campus.name}
                                 </span>
                               </td>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { LoggedInTeacher, Campus } from '@/types'
@@ -8,6 +8,18 @@ import type { LoggedInTeacher, Campus } from '@/types'
 const MAIN_COLOR = '#F5C200'
 const TODAY = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
 const TODAY_DOW = new Date(TODAY + 'T00:00:00').getDay() // 0=日, 4=木
+const TODAY_LABEL = (() => {
+  const d = new Date(TODAY + 'T00:00:00')
+  return `${d.getMonth() + 1}月${d.getDate()}日（${'日月火水木金土'[d.getDay()]}）`
+})()
+
+function fmtMin(min: number): string {
+  if (min === 0) return '0分'
+  if (min < 60) return `${min}分`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m === 0 ? `${h}時間` : `${h}時間${m}分`
+}
 
 // 校舎ごとの色（未選択時の背景・選択時の背景）
 const CAMPUS_COLORS: Record<string, { bg: string; activeBg: string; text: string }> = {
@@ -33,6 +45,8 @@ export default function AttendancePage() {
   const [selectedPeriods, setSelectedPeriods] = useState<number | null>(null)
   const [extraMinutes, setExtraMinutes] = useState(0)
   const [duplicateError, setDuplicateError] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const periodSectionRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem('soroban_teacher')
@@ -51,6 +65,14 @@ export default function AttendancePage() {
       })
   }, [router])
 
+  useEffect(() => {
+    if (selectedCampus) {
+      requestAnimationFrame(() => {
+        periodSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+  }, [selectedCampus])
+
   // 業務時間 = 1コマ×cleanup_minutes分。東校の木曜は最低30分
   const workMinutes = (() => {
     if (!selectedCampus || selectedPeriods == null || selectedPeriods === 0) return 0
@@ -64,6 +86,7 @@ export default function AttendancePage() {
     if (!teacher || !selectedCampus || selectedPeriods == null) return
     setSubmitting(true)
     setDuplicateError(false)
+    setSubmitError(null)
 
     // 重複チェック：同じ先生・同じ校舎・同じ日
     const { data: existing } = await supabase
@@ -92,7 +115,7 @@ export default function AttendancePage() {
     })
 
     if (error) {
-      alert('送信に失敗しました。もう一度お試しください。')
+      setSubmitError('送信に失敗しました。通信状況を確認して、もう一度お試しください。')
       setSubmitting(false)
       return
     }
@@ -105,6 +128,7 @@ export default function AttendancePage() {
     setSelectedPeriods(null)
     setExtraMinutes(0)
     setDuplicateError(false)
+    setSubmitError(null)
     setStep('form')
   }
 
@@ -116,7 +140,13 @@ export default function AttendancePage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-xl text-gray-500">読み込み中...</p>
+        <div className="flex items-center gap-3">
+          <span
+            className="block w-7 h-7 border-4 border-gray-200 rounded-full animate-spin"
+            style={{ borderTopColor: '#F5C200' }}
+          />
+          <span className="text-lg text-gray-500">読み込み中</span>
+        </div>
       </div>
     )
   }
@@ -147,15 +177,45 @@ export default function AttendancePage() {
         </div>
       </header>
 
+      {/* ステップ進行 */}
+      <div className="bg-white border-b border-gray-100">
+        <div className="flex items-center justify-center gap-2 max-w-lg mx-auto px-4 py-2.5 text-sm">
+          {(['form', 'confirm', 'done'] as const).map((s, i, arr) => {
+            const labels: Record<Step, string> = { form: '1. 入力', confirm: '2. 確認', done: '3. 完了' }
+            const currentIdx = arr.indexOf(step)
+            const isActive = s === step
+            const isDone = arr.indexOf(s) < currentIdx
+            return (
+              <span key={s} className="flex items-center gap-2">
+                {i > 0 && <span className="text-gray-300">›</span>}
+                <span
+                  className="font-bold"
+                  style={{ color: isActive ? '#b08800' : isDone ? '#6b7280' : '#d1d5db' }}
+                >
+                  {labels[s]}
+                </span>
+              </span>
+            )
+          })}
+        </div>
+      </div>
+
       <main className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
 
         {/* 完了画面 */}
-        {step === 'done' && (
-          <div className="bg-white rounded-2xl shadow p-8 text-center space-y-4">
-            <p className="text-6xl mb-2">✅</p>
+        {step === 'done' && selectedCampus && selectedPeriods != null && (
+          <div className="bg-white rounded-2xl shadow p-8 text-center space-y-5">
+            <p className="text-6xl mb-1">✅</p>
             <p className="text-2xl font-bold text-gray-800">送信しました</p>
-            <p className="text-gray-500 text-lg">お疲れ様でした！</p>
-            <div className="pt-4 space-y-3">
+            <div className="bg-gray-50 rounded-xl divide-y divide-gray-200 text-left">
+              <Row label="日付" value={TODAY_LABEL} />
+              <Row label="校舎" value={selectedCampus.name} />
+              <Row label="コマ数" value={selectedPeriods === 0 ? '授業なし' : `${selectedPeriods}コマ`} />
+              <Row label="業務時間" value={fmtMin(workMinutes)} />
+              {extraMinutes > 0 && <Row label="その他業務時間" value={fmtMin(extraMinutes)} />}
+            </div>
+            <p className="text-gray-500 text-base">お疲れ様でした！</p>
+            <div className="pt-2 space-y-3">
               <button
                 onClick={() => router.push('/history')}
                 className="w-full py-5 rounded-xl text-gray-900 font-bold text-xl"
@@ -178,14 +238,19 @@ export default function AttendancePage() {
           <div className="space-y-4">
             <h2 className="text-2xl font-bold text-gray-800 text-center">入力内容の確認</h2>
             <div className="bg-white rounded-2xl shadow divide-y divide-gray-100">
-              <Row label="日付" value={TODAY} />
+              <Row label="日付" value={TODAY_LABEL} />
               <Row label="校舎" value={selectedCampus.name} />
               <Row label="授業コマ数" value={selectedPeriods === 0 ? '授業なし' : `${selectedPeriods}コマ`} />
-              <Row label="業務時間" value={`${workMinutes}分`} note="授業準備・片付け含む" />
+              <Row label="業務時間" value={fmtMin(workMinutes)} note="授業準備・片付け含む" />
               {extraMinutes > 0 && (
-                <Row label="その他業務時間" value={`${extraMinutes}分`} />
+                <Row label="その他業務時間" value={fmtMin(extraMinutes)} />
               )}
             </div>
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-center">
+                <p className="text-red-600 font-bold text-base">{submitError}</p>
+              </div>
+            )}
             <button
               onClick={handleSubmit}
               disabled={submitting}
@@ -195,7 +260,7 @@ export default function AttendancePage() {
               {submitting ? '送信中...' : 'この内容で送信する'}
             </button>
             <button
-              onClick={() => setStep('form')}
+              onClick={() => { setStep('form'); setSubmitError(null) }}
               className="w-full py-4 rounded-xl border-2 border-gray-300 text-gray-700 font-semibold text-xl"
             >
               戻る
@@ -218,7 +283,7 @@ export default function AttendancePage() {
             {/* 今日の日付 */}
             <div className="bg-white rounded-2xl shadow px-5 py-4 text-center">
               <p className="text-gray-500 text-base">勤務日</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{TODAY}</p>
+              <p className="text-2xl font-bold text-gray-800 mt-1">{TODAY_LABEL}</p>
             </div>
 
             {/* 校舎選択 */}
@@ -254,9 +319,9 @@ export default function AttendancePage() {
                   })()}
                   <button
                     onClick={() => { setSelectedCampus(null); setSelectedPeriods(null) }}
-                    className="w-full py-3 rounded-xl border-2 border-gray-300 text-gray-500 font-semibold text-lg"
+                    className="self-center mt-1 px-5 py-2 text-sm text-gray-400 underline hover:text-gray-600"
                   >
-                    変更する
+                    別の校舎に変更する
                   </button>
                 </div>
               ) : (
@@ -284,7 +349,7 @@ export default function AttendancePage() {
 
             {/* コマ数選択（校舎が選ばれたら表示） */}
             {selectedCampus && (
-              <section className="bg-white rounded-2xl shadow p-5">
+              <section ref={periodSectionRef} className="bg-white rounded-2xl shadow p-5 scroll-mt-24">
                 <h2 className="text-xl font-bold text-gray-700 mb-4">授業コマ数</h2>
                 <div className="grid grid-cols-2 gap-4">
                   {[{ n: 0, label: '授業なし' }, { n: 1, label: '1コマ' }, { n: 2, label: '2コマ' }, { n: 3, label: '3コマ' }].map(({ n, label }) => (
