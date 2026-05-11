@@ -73,11 +73,14 @@ export default function AttendancePage() {
     }
   }, [selectedCampus])
 
-  // 業務時間 = 1コマ×cleanup_minutes分。東校の木曜は最低30分
+  // 業務時間 = 1コマ×cleanup_minutes分。東校(GC)・駅前校の木曜は最低30分
+  const thursdayMin30 = selectedCampus !== null
+    && TODAY_DOW === 4
+    && (selectedCampus.name === '東校(GC)' || selectedCampus.name === '駅前校')
   const workMinutes = (() => {
     if (!selectedCampus || selectedPeriods == null || selectedPeriods === 0) return 0
     const base = selectedPeriods * selectedCampus.cleanup_minutes
-    return selectedCampus.name === '東校(GC)' && TODAY_DOW === 4 ? Math.max(base, 30) : base
+    return thursdayMin30 ? Math.max(base, 30) : base
   })()
 
   const canConfirm = selectedCampus !== null && selectedPeriods !== null
@@ -309,7 +312,7 @@ export default function AttendancePage() {
                           {selectedCampus.name}
                         </div>
                         <p className="text-center text-base text-gray-500 px-2">
-                          {selectedCampus.name === '東校(GC)' && TODAY_DOW === 4
+                          {thursdayMin30
                             ? <>木曜は<span className="font-bold text-gray-700">1コマでも30分</span>の業務時間が自動で追加されます</>
                             : <>1コマにつき<span className="font-bold text-gray-700">{selectedCampus.cleanup_minutes}分</span>の業務時間が自動で追加されます</>
                           }

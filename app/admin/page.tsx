@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { LoggedInTeacher, Campus, AttendanceWithRelations } from '@/types'
@@ -55,7 +55,8 @@ function calcWorkMinutes(campus: Campus, periods: number, dateStr: string): numb
   if (periods === 0) return 0
   const dow = new Date(dateStr + 'T00:00:00').getDay()
   const base = periods * campus.cleanup_minutes
-  return campus.name === '東校(GC)' && dow === 4 ? Math.max(base, 30) : base
+  const thursdayMin30 = dow === 4 && (campus.name === '東校(GC)' || campus.name === '駅前校')
+  return thursdayMin30 ? Math.max(base, 30) : base
 }
 
 function fmtMin(min: number): string {
@@ -80,6 +81,23 @@ export default function AdminPage() {
   const [newRecord, setNewRecord] = useState<NewRecordForm>({ date: TODAY_JST, campusId: '', periods: 1, extraMinutes: 0, notes: '' })
   const [addSaving, setAddSaving] = useState(false)
   const [errorBanner, setErrorBanner] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'teacher' | 'day'>('teacher')
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const calendarRef = useRef<HTMLDivElement>(null)
+  const dayDetailRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (selectedDate && dayDetailRef.current) {
+      requestAnimationFrame(() => {
+        dayDetailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+  }, [selectedDate])
+
+  const closeDetailAndScrollUp = () => {
+    calendarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setSelectedDate(null)
+  }
 
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -154,9 +172,42 @@ export default function AdminPage() {
     setSelectedTeacher(null)
     setEditTarget(null)
     setIsAdding(false)
+    setSelectedDate(null)
     setMonth(m)
     setYear(y)
   }
+
+  const recordsByDate = useMemo(() => {
+    const map = new Map<string, AttendanceWithRelations[]>()
+    for (const s of summaries) {
+      for (const r of s.records) {
+        const list = map.get(r.date) ?? []
+        list.push(r)
+        map.set(r.date, list)
+      }
+    }
+    return map
+  }, [summaries])
+
+  const calendarCells = useMemo(() => {
+    const firstDow = new Date(year, month - 1, 1).getDay()
+    const daysInMonth = new Date(year, month, 0).getDate()
+    const totalRows = Math.ceil((firstDow + daysInMonth) / 7)
+    const total = totalRows * 7
+    const mm = String(month).padStart(2, '0')
+    const cells: Array<null | { dateStr: string; day: number; dow: number; records: AttendanceWithRelations[] }> = []
+    for (let i = 0; i < total; i++) {
+      const dayNum = i - firstDow + 1
+      if (dayNum < 1 || dayNum > daysInMonth) {
+        cells.push(null)
+      } else {
+        const dateStr = `${year}-${mm}-${String(dayNum).padStart(2, '0')}`
+        const records = recordsByDate.get(dateStr) ?? []
+        cells.push({ dateStr, day: dayNum, dow: (firstDow + dayNum - 1) % 7, records })
+      }
+    }
+    return cells
+  }, [year, month, recordsByDate])
 
   const selectTeacher = (t: SimpleTeacher) => {
     const s = summaries.find(s => s.id === t.id) ?? {
@@ -258,12 +309,34 @@ export default function AdminPage() {
 
       <div className="flex-1 max-w-screen-xl mx-auto w-full px-6 py-6 flex flex-col gap-4">
 
-        {/* 月選択 */}
+        {/* ビュー切替＋月選択 */}
         <div className="flex items-center gap-4 bg-white rounded-2xl shadow px-6 py-4">
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            <button
+              onClick={() => setViewMode('teacher')}
+              className="px-5 py-2 rounded-lg text-sm font-bold transition-colors"
+              style={viewMode === 'teacher'
+                ? { backgroundColor: '#fff', color: '#1f2937', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }
+                : { color: '#6b7280' }
+              }
+            >
+              講師別
+            </button>
+            <button
+              onClick={() => setViewMode('day')}
+              className="px-5 py-2 rounded-lg text-sm font-bold transition-colors"
+              style={viewMode === 'day'
+                ? { backgroundColor: '#fff', color: '#1f2937', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }
+                : { color: '#6b7280' }
+              }
+            >
+              日別
+            </button>
+          </div>
+          <div className="flex-1" />
           <button onClick={() => changeMonth(-1)} className="text-3xl px-2 text-gray-500 hover:text-gray-800">‹</button>
           <span className="text-2xl font-bold text-gray-800 w-40 text-center">{year}年 {month}月</span>
           <button onClick={() => changeMonth(1)} className="text-3xl px-2 text-gray-500 hover:text-gray-800">›</button>
-          <p className="ml-4 text-gray-400 text-sm">講師名をクリックすると詳細・編集できます</p>
         </div>
 
         {errorBanner && (
@@ -278,7 +351,8 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* メインエリア：左リスト＋右詳細 */}
+        {/* 講師別ビュー：左リスト＋右詳細 */}
+        {viewMode === 'teacher' && (
         <div className="flex gap-5 items-start">
 
           {/* 左：全講師一覧 */}
@@ -707,6 +781,207 @@ export default function AdminPage() {
             )}
           </div>
         </div>
+        )}
+
+        {/* 日別ビュー：カレンダー＋下に詳細 */}
+        {viewMode === 'day' && (
+        <div className="space-y-4">
+          {/* カレンダー */}
+          <div ref={calendarRef} className="bg-white rounded-2xl shadow p-5">
+            {loading ? (
+              <div className="flex items-center justify-center gap-3 py-10">
+                <span
+                  className="block w-6 h-6 border-4 border-gray-200 rounded-full animate-spin"
+                  style={{ borderTopColor: '#F5C200' }}
+                />
+                <span className="text-gray-500">読み込み中</span>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-7 mb-2">
+                  {['日', '月', '火', '水', '木', '金', '土'].map((d, i) => (
+                    <div
+                      key={d}
+                      className="text-center text-sm font-bold py-2"
+                      style={{ color: i === 0 ? '#DC2626' : i === 6 ? '#2563EB' : '#6B7280' }}
+                    >
+                      {d}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {calendarCells.map((cell, idx) => {
+                    if (!cell) {
+                      return <div key={`empty-${idx}`} className="aspect-square" />
+                    }
+                    const isSelected = selectedDate === cell.dateStr
+                    const isToday = cell.dateStr === TODAY_JST
+                    const hasRecords = cell.records.length > 0
+                    const dayColor = cell.dow === 0 ? '#DC2626' : cell.dow === 6 ? '#2563EB' : '#374151'
+                    const teacherCount = new Set(cell.records.map(r => r.teacher.id)).size
+                    const bgColor = isSelected
+                      ? '#FFFBEB'
+                      : hasRecords ? '#FAFAF9' : 'white'
+                    const borderColor = isSelected
+                      ? '#F5C200'
+                      : hasRecords ? '#D4D4D8' : '#E5E7EB'
+                    return (
+                      <button
+                        key={cell.dateStr}
+                        onClick={() => setSelectedDate(isSelected ? null : cell.dateStr)}
+                        className="aspect-square rounded-xl border-2 p-2 transition-all flex flex-col text-left hover:shadow hover:border-gray-400"
+                        style={{ borderColor, backgroundColor: bgColor }}
+                      >
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-base font-bold" style={{ color: dayColor }}>
+                            {cell.day}
+                          </span>
+                          {isToday && (
+                            <span className="text-[10px] font-bold px-1 rounded" style={{ backgroundColor: '#F5C200', color: '#1a1a1a' }}>
+                              今日
+                            </span>
+                          )}
+                        </div>
+                        {hasRecords && (
+                          <>
+                            <span className="text-sm font-bold text-gray-700 mt-1">{teacherCount}<span className="text-xs font-normal text-gray-500 ml-0.5">名</span></span>
+                            <div className="mt-auto flex flex-wrap gap-0.5">
+                              {cell.records.slice(0, 10).map((r) => {
+                                const color = CAMPUS_COLORS[r.campus.name] ?? DEFAULT_COLOR
+                                return (
+                                  <span
+                                    key={r.id}
+                                    className="block w-2 h-2 rounded-full"
+                                    style={{ backgroundColor: color.border }}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* 凡例 */}
+                <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap gap-3 items-center text-xs text-gray-500">
+                  <span className="font-bold text-gray-400">凡例：</span>
+                  {campuses.map((c) => {
+                    const color = CAMPUS_COLORS[c.name] ?? DEFAULT_COLOR
+                    return (
+                      <span key={c.id} className="inline-flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color.border }} />
+                        {c.name}
+                      </span>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 選択日の詳細 */}
+          <div ref={dayDetailRef}>
+          {selectedDate ? (() => {
+            const dayRecords = (recordsByDate.get(selectedDate) ?? []).slice().sort((a, b) => a.teacher.code - b.teacher.code)
+            const totalPeriods = dayRecords.reduce((s, r) => s + r.periods, 0)
+            const totalWork = dayRecords.reduce((s, r) => s + r.work_minutes, 0)
+            const totalExtra = dayRecords.reduce((s, r) => s + r.extra_minutes, 0)
+            const teacherCount = new Set(dayRecords.map(r => r.teacher.id)).size
+            return (
+              <div className="bg-white rounded-2xl shadow overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4" style={{ backgroundColor: '#FFF9E0' }}>
+                  <div className="flex items-baseline gap-3 min-w-0">
+                    <p className="text-lg font-bold text-gray-800 whitespace-nowrap">{formatDate(selectedDate)} の勤務</p>
+                    {dayRecords.length > 0 && (
+                      <p className="text-sm text-gray-500 whitespace-nowrap">{dayRecords.length}件 ／ {teacherCount}名</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={closeDetailAndScrollUp}
+                    className="text-sm font-semibold px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                  >
+                    ↑ カレンダーに戻る
+                  </button>
+                </div>
+                {dayRecords.length === 0 ? (
+                  <p className="px-6 py-10 text-center text-gray-400">この日の記録はありません</p>
+                ) : (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left px-6 py-3 text-sm font-bold text-gray-600">講師</th>
+                        <th className="text-left px-4 py-3 text-sm font-bold text-gray-600">校舎</th>
+                        <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">コマ数</th>
+                        <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">業務時間</th>
+                        <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">その他時間</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {dayRecords.map((rec) => {
+                        const color = CAMPUS_COLORS[rec.campus.name] ?? DEFAULT_COLOR
+                        return (
+                          <tr key={rec.id}>
+                            <td className="px-6 py-4 text-base font-medium text-gray-800 whitespace-nowrap">
+                              {rec.teacher.name}
+                            </td>
+                            <td className="px-4 py-4">
+                              <span
+                                className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full"
+                                style={{ backgroundColor: color.bg, color: color.text }}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color.border }} />
+                                {rec.campus.name}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-center text-base font-bold text-gray-800">
+                              {rec.periods === 0 ? '授業なし' : `${rec.periods}コマ`}
+                            </td>
+                            <td className="px-4 py-4 text-center text-base text-gray-600">
+                              {fmtMin(rec.work_minutes)}
+                            </td>
+                            <td className="px-4 py-4 text-center text-base text-gray-600">
+                              {rec.extra_minutes > 0 ? fmtMin(rec.extra_minutes) : '−'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-300" style={{ backgroundColor: '#FFF9E0' }}>
+                        <td colSpan={2} className="px-6 py-3 text-sm font-bold text-gray-700">合計</td>
+                        <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">{totalPeriods}コマ</td>
+                        <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">{fmtMin(totalWork)}</td>
+                        <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">
+                          {totalExtra > 0 ? fmtMin(totalExtra) : '−'}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+              </div>
+            )
+          })() : (
+            <div className="bg-white rounded-2xl shadow p-8 text-center text-gray-400">
+              <p className="text-base">カレンダーの日付をクリックすると、その日の勤務詳細がここに表示されます</p>
+            </div>
+          )}
+          </div>
+
+          {/* フローティング「カレンダーに戻る」ボタン：日付選択中は常時表示 */}
+          {selectedDate && (
+            <button
+              onClick={closeDetailAndScrollUp}
+              className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-5 py-3 rounded-full font-bold text-sm shadow-lg hover:shadow-xl transition-shadow"
+              style={{ backgroundColor: '#F5C200', color: '#1a1a1a' }}
+              aria-label="カレンダーに戻る"
+            >
+              <span className="text-base leading-none">↑</span>
+              カレンダーに戻る
+            </button>
+          )}
+        </div>
+        )}
       </div>
     </div>
   )
