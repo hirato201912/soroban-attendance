@@ -8,7 +8,7 @@ import type { LoggedInTeacher, AttendanceWithRelations } from '@/types'
 const MAIN_COLOR = '#F5C200'
 
 const CAMPUS_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  '前原前校': { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
+  '前原駅前校': { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
   '可也校':   { bg: '#ECFDF5', border: '#10B981', text: '#065F46' },
   '南校':     { bg: '#F5F3FF', border: '#8B5CF6', text: '#5B21B6' },
   '東風校':   { bg: '#FDF2F8', border: '#EC4899', text: '#9D174D' },

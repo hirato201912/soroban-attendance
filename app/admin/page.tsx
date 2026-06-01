@@ -9,7 +9,7 @@ const MAIN_COLOR = '#F5C200'
 const TODAY_JST = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
 
 const CAMPUS_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  '前原前校': { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
+  '前原駅前校': { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8' },
   '可也校':   { bg: '#ECFDF5', border: '#10B981', text: '#065F46' },
   '南校':     { bg: '#F5F3FF', border: '#8B5CF6', text: '#5B21B6' },
   '東風校':   { bg: '#FDF2F8', border: '#EC4899', text: '#9D174D' },
@@ -55,7 +55,7 @@ function calcWorkMinutes(campus: Campus, periods: number, dateStr: string): numb
   if (periods === 0) return 0
   const dow = new Date(dateStr + 'T00:00:00').getDay()
   const base = periods * campus.cleanup_minutes
-  const thursdayMin30 = dow === 4 && (campus.name === '東校(GC)' || campus.name === '駅前校')
+  const thursdayMin30 = dow === 4 && (campus.name === '東校(GC)' || campus.name === '前原駅前校')
   return thursdayMin30 ? Math.max(base, 30) : base
 }
 
@@ -81,6 +81,7 @@ export default function AdminPage() {
   const [newRecord, setNewRecord] = useState<NewRecordForm>({ date: TODAY_JST, campusId: '', periods: 1, extraMinutes: 0, notes: '' })
   const [addSaving, setAddSaving] = useState(false)
   const [errorBanner, setErrorBanner] = useState<string | null>(null)
+  const [noticeBanner, setNoticeBanner] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'teacher' | 'day'>('teacher')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const calendarRef = useRef<HTMLDivElement>(null)
@@ -253,6 +254,7 @@ export default function AdminPage() {
 
     if (error) { setErrorBanner('更新に失敗しました'); setSaving(false); return }
     setEditTarget(null)
+    setNoticeBanner(null)
     setSaving(false)
     await fetchData()
   }
@@ -260,6 +262,34 @@ export default function AdminPage() {
   const handleAddNew = async () => {
     if (!selectedTeacher || !newRecord.campusId) return
     setAddSaving(true)
+    setErrorBanner(null)
+    setNoticeBanner(null)
+
+    // 同じ先生・同じ日・同じ校舎のレコードが既にある場合は編集モードに切り替え
+    const { data: existing } = await supabase
+      .from('soroban_attendances')
+      .select('*, teacher:itoshima_teachers(id, name, code), campus:soroban_campuses(id, name, cleanup_minutes)')
+      .eq('teacher_id', selectedTeacher.id)
+      .eq('date', newRecord.date)
+      .eq('campus_id', newRecord.campusId)
+      .maybeSingle()
+
+    if (existing) {
+      const rec = existing as AttendanceWithRelations
+      setIsAdding(false)
+      setEditTarget({
+        ...rec,
+        _editDate: rec.date,
+        _editCampusId: rec.campus_id,
+        _editPeriods: rec.periods,
+        _editExtraMinutes: rec.extra_minutes,
+        _editNotes: rec.notes ?? '',
+      })
+      setNoticeBanner(`${formatDate(newRecord.date)}・${rec.campus.name} には既に記録があります。下の編集フォームで内容を変更してください。`)
+      setAddSaving(false)
+      return
+    }
+
     const campus = campuses.find(c => c.id === newRecord.campusId)
     const workMinutes = campus ? calcWorkMinutes(campus, newRecord.periods, newRecord.date) : 0
 
@@ -345,6 +375,18 @@ export default function AdminPage() {
             <button
               onClick={() => setErrorBanner(null)}
               className="text-red-500 hover:text-red-700 text-sm font-medium underline"
+            >
+              閉じる
+            </button>
+          </div>
+        )}
+
+        {noticeBanner && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-3 flex items-center justify-between gap-4">
+            <span className="text-blue-700 font-medium">{noticeBanner}</span>
+            <button
+              onClick={() => setNoticeBanner(null)}
+              className="text-blue-500 hover:text-blue-700 text-sm font-medium underline whitespace-nowrap"
             >
               閉じる
             </button>

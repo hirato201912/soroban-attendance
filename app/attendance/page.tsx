@@ -23,7 +23,7 @@ function fmtMin(min: number): string {
 
 // 校舎ごとの色（未選択時の背景・選択時の背景）
 const CAMPUS_COLORS: Record<string, { bg: string; activeBg: string; text: string }> = {
-  '前原前校': { bg: '#DBEAFE', activeBg: '#3B82F6', text: '#1D4ED8' },
+  '前原駅前校': { bg: '#DBEAFE', activeBg: '#3B82F6', text: '#1D4ED8' },
   '可也校':   { bg: '#D1FAE5', activeBg: '#10B981', text: '#065F46' },
   '南校':     { bg: '#EDE9FE', activeBg: '#8B5CF6', text: '#5B21B6' },
   '東風校':   { bg: '#FCE7F3', activeBg: '#EC4899', text: '#9D174D' },
@@ -73,10 +73,10 @@ export default function AttendancePage() {
     }
   }, [selectedCampus])
 
-  // 業務時間 = 1コマ×cleanup_minutes分。東校(GC)・駅前校の木曜は最低30分
+  // 業務時間 = 1コマ×cleanup_minutes分。東校(GC)・前原駅前校の木曜は最低30分
   const thursdayMin30 = selectedCampus !== null
     && TODAY_DOW === 4
-    && (selectedCampus.name === '東校(GC)' || selectedCampus.name === '駅前校')
+    && (selectedCampus.name === '東校(GC)' || selectedCampus.name === '前原駅前校')
   const workMinutes = (() => {
     if (!selectedCampus || selectedPeriods == null || selectedPeriods === 0) return 0
     const base = selectedPeriods * selectedCampus.cleanup_minutes
