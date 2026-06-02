@@ -235,6 +235,38 @@ export default function AdminPage() {
   const handleSave = async () => {
     if (!editTarget) return
     setSaving(true)
+    setErrorBanner(null)
+
+    // 編集で日付か校舎を変えたとき、同じ(先生×新しい日付×新しい校舎)のレコードが他にある場合は
+    // そちらの編集モードに切り替える（DBのユニーク制約による更新失敗を避け、編集体験を一致させる）
+    const dateOrCampusChanged =
+      editTarget._editDate !== editTarget.date ||
+      editTarget._editCampusId !== editTarget.campus_id
+    if (dateOrCampusChanged) {
+      const { data: conflict } = await supabase
+        .from('soroban_attendances')
+        .select('*, teacher:itoshima_teachers(id, name, code), campus:soroban_campuses(id, name, cleanup_minutes)')
+        .eq('teacher_id', editTarget.teacher_id)
+        .eq('date', editTarget._editDate)
+        .eq('campus_id', editTarget._editCampusId)
+        .neq('id', editTarget.id)
+        .maybeSingle()
+      if (conflict) {
+        const rec = conflict as AttendanceWithRelations
+        setEditTarget({
+          ...rec,
+          _editDate: rec.date,
+          _editCampusId: rec.campus_id,
+          _editPeriods: rec.periods,
+          _editExtraMinutes: rec.extra_minutes,
+          _editNotes: rec.notes ?? '',
+        })
+        setNoticeBanner(`${formatDate(editTarget._editDate)}・${rec.campus.name} には別の記録があります。下の編集フォームはその記録に切り替わりました。`)
+        setSaving(false)
+        return
+      }
+    }
+
     const campus = campuses.find(c => c.id === editTarget._editCampusId)
     const newWorkMinutes = campus
       ? calcWorkMinutes(campus, editTarget._editPeriods, editTarget._editDate)
@@ -319,6 +351,40 @@ export default function AdminPage() {
     fetchData()
   }
 
+  // 今月の全講師レコードを CSV ダウンロード（画面表示と同じ見た目）
+  const downloadMonthCsv = () => {
+    const headers = ['講師コード', '講師名', '日付', '校舎', 'コマ数', '業務時間', 'その他業務時間']
+    type Row = { code: number; name: string; date: string; campus: string; periods: string; work: string; extra: string }
+    const rows: Row[] = []
+    for (const t of summaries) {
+      for (const r of t.records) {
+        rows.push({
+          code: t.code,
+          name: t.name,
+          date: r.date,
+          campus: r.campus.name,
+          periods: r.periods === 0 ? '授業なし' : `${r.periods}コマ`,
+          work: r.work_minutes > 0 ? fmtMin(r.work_minutes) : '−',
+          extra: r.extra_minutes > 0 ? fmtMin(r.extra_minutes) : '−',
+        })
+      }
+    }
+    rows.sort((a, b) => a.code - b.code || a.date.localeCompare(b.date))
+    const escape = (s: string) => /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    const body = rows.map(r => [String(r.code), r.name, formatDate(r.date), r.campus, r.periods, r.work, r.extra])
+    const csv = [headers, ...body].map(row => row.map(escape).join(',')).join('\r\n')
+    // Excel が UTF-8 として正しく開けるよう BOM を先頭に付与
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `soroban-attendance-${year}-${String(month).padStart(2, '0')}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-100">
       {/* ヘッダー */}
@@ -364,6 +430,14 @@ export default function AdminPage() {
             </button>
           </div>
           <div className="flex-1" />
+          <button
+            onClick={downloadMonthCsv}
+            disabled={loading || summaries.length === 0}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 text-sm font-bold disabled:opacity-40"
+            style={{ borderColor: '#F5C200', color: '#b08800', backgroundColor: '#FFFBEB' }}
+          >
+            📥 今月のCSV
+          </button>
           <button onClick={() => changeMonth(-1)} className="text-3xl px-2 text-gray-500 hover:text-gray-800">‹</button>
           <span className="text-2xl font-bold text-gray-800 w-40 text-center">{year}年 {month}月</span>
           <button onClick={() => changeMonth(1)} className="text-3xl px-2 text-gray-500 hover:text-gray-800">›</button>
