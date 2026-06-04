@@ -33,6 +33,7 @@ type EditTarget = AttendanceWithRelations & {
   _editDate: string
   _editCampusId: string
   _editPeriods: number
+  _editWorkMinutes: number
   _editExtraMinutes: number
   _editNotes: string
 }
@@ -41,6 +42,7 @@ type NewRecordForm = {
   date: string
   campusId: string
   periods: number
+  workMinutes: number
   extraMinutes: number
   notes: string
 }
@@ -78,7 +80,7 @@ export default function AdminPage() {
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
   const [saving, setSaving] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
-  const [newRecord, setNewRecord] = useState<NewRecordForm>({ date: TODAY_JST, campusId: '', periods: 1, extraMinutes: 0, notes: '' })
+  const [newRecord, setNewRecord] = useState<NewRecordForm>({ date: TODAY_JST, campusId: '', periods: 1, workMinutes: 0, extraMinutes: 0, notes: '' })
   const [addSaving, setAddSaving] = useState(false)
   const [errorBanner, setErrorBanner] = useState<string | null>(null)
   const [noticeBanner, setNoticeBanner] = useState<string | null>(null)
@@ -136,13 +138,13 @@ export default function AdminPage() {
     const newSummaries = Array.from(map.values()).sort((a, b) => a.code - b.code)
     setSummaries(newSummaries)
 
-    if (selectedTeacher) {
-      const updated = newSummaries.find(s => s.id === selectedTeacher.id)
-      setSelectedTeacher(updated ?? { ...selectedTeacher, totalPeriods: 0, totalWorkMinutes: 0, totalExtraMinutes: 0, records: [] })
-    }
+    setSelectedTeacher(prev => {
+      if (!prev) return null
+      const updated = newSummaries.find(s => s.id === prev.id)
+      return updated ?? { ...prev, totalPeriods: 0, totalWorkMinutes: 0, totalExtraMinutes: 0, records: [] }
+    })
 
     setLoading(false)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month])
 
   useEffect(() => {
@@ -155,7 +157,10 @@ export default function AdminPage() {
     supabase.from('soroban_campuses').select('*').order('sort_order').then(({ data }) => {
       const cs = (data ?? []) as Campus[]
       setCampuses(cs)
-      if (cs.length > 0) setNewRecord(prev => ({ ...prev, campusId: cs[0].id }))
+      if (cs.length > 0) {
+        const initWork = calcWorkMinutes(cs[0], 1, TODAY_JST)
+        setNewRecord(prev => ({ ...prev, campusId: cs[0].id, workMinutes: initWork }))
+      }
     })
 
     supabase.from('itoshima_teachers').select('id, name, code')
@@ -227,6 +232,7 @@ export default function AdminPage() {
       _editDate: rec.date,
       _editCampusId: rec.campus_id,
       _editPeriods: rec.periods,
+      _editWorkMinutes: rec.work_minutes,
       _editExtraMinutes: rec.extra_minutes,
       _editNotes: rec.notes ?? '',
     })
@@ -258,6 +264,7 @@ export default function AdminPage() {
           _editDate: rec.date,
           _editCampusId: rec.campus_id,
           _editPeriods: rec.periods,
+          _editWorkMinutes: rec.work_minutes,
           _editExtraMinutes: rec.extra_minutes,
           _editNotes: rec.notes ?? '',
         })
@@ -267,10 +274,7 @@ export default function AdminPage() {
       }
     }
 
-    const campus = campuses.find(c => c.id === editTarget._editCampusId)
-    const newWorkMinutes = campus
-      ? calcWorkMinutes(campus, editTarget._editPeriods, editTarget._editDate)
-      : editTarget.work_minutes
+    const finalWorkMinutes = editTarget._editPeriods === 0 ? 0 : editTarget._editWorkMinutes
 
     const { error } = await supabase
       .from('soroban_attendances')
@@ -278,7 +282,7 @@ export default function AdminPage() {
         date: editTarget._editDate,
         campus_id: editTarget._editCampusId,
         periods: editTarget._editPeriods,
-        work_minutes: newWorkMinutes,
+        work_minutes: finalWorkMinutes,
         extra_minutes: editTarget._editExtraMinutes,
         notes: editTarget._editNotes.trim() || null,
       })
@@ -314,6 +318,7 @@ export default function AdminPage() {
         _editDate: rec.date,
         _editCampusId: rec.campus_id,
         _editPeriods: rec.periods,
+        _editWorkMinutes: rec.work_minutes,
         _editExtraMinutes: rec.extra_minutes,
         _editNotes: rec.notes ?? '',
       })
@@ -322,22 +327,23 @@ export default function AdminPage() {
       return
     }
 
-    const campus = campuses.find(c => c.id === newRecord.campusId)
-    const workMinutes = campus ? calcWorkMinutes(campus, newRecord.periods, newRecord.date) : 0
+    const finalWorkMinutes = newRecord.periods === 0 ? 0 : newRecord.workMinutes
 
     const { error } = await supabase.from('soroban_attendances').insert({
       teacher_id: selectedTeacher.id,
       date: newRecord.date,
       campus_id: newRecord.campusId,
       periods: newRecord.periods,
-      work_minutes: workMinutes,
+      work_minutes: finalWorkMinutes,
       extra_minutes: newRecord.extraMinutes,
       notes: newRecord.notes.trim() || null,
     })
 
     if (error) { setErrorBanner('追加に失敗しました'); setAddSaving(false); return }
     setIsAdding(false)
-    setNewRecord({ date: TODAY_JST, campusId: campuses[0]?.id ?? '', periods: 1, extraMinutes: 0, notes: '' })
+    const resetCampusId = campuses[0]?.id ?? ''
+    const resetWork = campuses[0] ? calcWorkMinutes(campuses[0], 1, TODAY_JST) : 0
+    setNewRecord({ date: TODAY_JST, campusId: resetCampusId, periods: 1, workMinutes: resetWork, extraMinutes: 0, notes: '' })
     setAddSaving(false)
     await fetchData()
   }
@@ -543,7 +549,13 @@ export default function AdminPage() {
                       </button>
                     )}
                     <button
-                      onClick={() => { setIsAdding(true); setEditTarget(null) }}
+                      onClick={() => {
+                        const c = campuses.find(x => x.id === newRecord.campusId) ?? campuses[0]
+                        const work = c ? calcWorkMinutes(c, newRecord.periods, newRecord.date) : 0
+                        setNewRecord(prev => ({ ...prev, workMinutes: work }))
+                        setIsAdding(true)
+                        setEditTarget(null)
+                      }}
                       className="text-sm font-bold px-4 py-1.5 rounded-lg text-gray-900"
                       style={{ backgroundColor: MAIN_COLOR }}
                     >
@@ -601,7 +613,12 @@ export default function AdminPage() {
                           <input
                             type="date"
                             value={newRecord.date}
-                            onChange={(e) => setNewRecord({ ...newRecord, date: e.target.value })}
+                            onChange={(e) => {
+                              const newDate = e.target.value
+                              const c = campuses.find(x => x.id === newRecord.campusId)
+                              const work = c ? calcWorkMinutes(c, newRecord.periods, newDate) : 0
+                              setNewRecord({ ...newRecord, date: newDate, workMinutes: work })
+                            }}
                             className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-[#F5C200]"
                           />
                         </div>
@@ -614,7 +631,10 @@ export default function AdminPage() {
                               return (
                                 <button
                                   key={c.id}
-                                  onClick={() => setNewRecord({ ...newRecord, campusId: c.id })}
+                                  onClick={() => {
+                                    const work = calcWorkMinutes(c, newRecord.periods, newRecord.date)
+                                    setNewRecord({ ...newRecord, campusId: c.id, workMinutes: work })
+                                  }}
                                   className="w-full py-3 px-4 rounded-xl border-2 text-left font-semibold transition-all"
                                   style={isSel
                                     ? { backgroundColor: color.bg, borderColor: color.border, color: color.text }
@@ -637,7 +657,11 @@ export default function AdminPage() {
                             {[0, 1, 2, 3].map((n) => (
                               <button
                                 key={n}
-                                onClick={() => setNewRecord({ ...newRecord, periods: n })}
+                                onClick={() => {
+                                  const c = campuses.find(x => x.id === newRecord.campusId)
+                                  const work = c ? calcWorkMinutes(c, n, newRecord.date) : 0
+                                  setNewRecord({ ...newRecord, periods: n, workMinutes: work })
+                                }}
                                 className="py-3 rounded-xl border-2 font-bold text-base transition-all"
                                 style={newRecord.periods === n
                                   ? { backgroundColor: MAIN_COLOR, borderColor: MAIN_COLOR, color: '#1a1a1a' }
@@ -648,6 +672,48 @@ export default function AdminPage() {
                               </button>
                             ))}
                           </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-600 mb-2">業務時間</label>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => setNewRecord({ ...newRecord, workMinutes: Math.max(0, newRecord.workMinutes - 5) })}
+                              disabled={newRecord.periods === 0 || newRecord.workMinutes === 0}
+                              className="px-5 py-3 rounded-xl border-2 border-gray-300 font-bold text-gray-700 disabled:opacity-30 hover:bg-gray-50"
+                            >
+                              −5分
+                            </button>
+                            <span className="flex-1 text-center text-3xl font-bold" style={{ color: '#b08800' }}>
+                              {newRecord.periods === 0 ? '0分' : `${newRecord.workMinutes}分`}
+                            </span>
+                            <button
+                              onClick={() => setNewRecord({ ...newRecord, workMinutes: newRecord.workMinutes + 5 })}
+                              disabled={newRecord.periods === 0}
+                              className="px-5 py-3 rounded-xl border-2 font-bold disabled:opacity-30"
+                              style={{ backgroundColor: MAIN_COLOR, borderColor: MAIN_COLOR }}
+                            >
+                              ＋5分
+                            </button>
+                          </div>
+                          {newRecord.periods > 0 && (() => {
+                            const c = campuses.find(x => x.id === newRecord.campusId)
+                            const auto = c ? calcWorkMinutes(c, newRecord.periods, newRecord.date) : 0
+                            const isManual = newRecord.workMinutes !== auto
+                            return (
+                              <p className="text-xs text-gray-500 mt-2 text-center">
+                                自動計算：{auto}分
+                                {isManual && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setNewRecord({ ...newRecord, workMinutes: auto })}
+                                    className="ml-2 underline hover:text-gray-700"
+                                  >
+                                    自動値に戻す
+                                  </button>
+                                )}
+                              </p>
+                            )
+                          })()}
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-600 mb-2">その他業務時間</label>
@@ -715,7 +781,12 @@ export default function AdminPage() {
                           <input
                             type="date"
                             value={editTarget._editDate}
-                            onChange={(e) => setEditTarget({ ...editTarget, _editDate: e.target.value })}
+                            onChange={(e) => {
+                              const newDate = e.target.value
+                              const c = campuses.find(x => x.id === editTarget._editCampusId)
+                              const work = c ? calcWorkMinutes(c, editTarget._editPeriods, newDate) : editTarget._editWorkMinutes
+                              setEditTarget({ ...editTarget, _editDate: newDate, _editWorkMinutes: work })
+                            }}
                             className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-[#F5C200]"
                           />
                         </div>
@@ -728,7 +799,10 @@ export default function AdminPage() {
                               return (
                                 <button
                                   key={c.id}
-                                  onClick={() => setEditTarget({ ...editTarget, _editCampusId: c.id })}
+                                  onClick={() => {
+                                    const work = calcWorkMinutes(c, editTarget._editPeriods, editTarget._editDate)
+                                    setEditTarget({ ...editTarget, _editCampusId: c.id, _editWorkMinutes: work })
+                                  }}
                                   className="w-full py-3 px-4 rounded-xl border-2 text-left font-semibold transition-all"
                                   style={isSel
                                     ? { backgroundColor: color.bg, borderColor: color.border, color: color.text }
@@ -751,7 +825,11 @@ export default function AdminPage() {
                             {[0, 1, 2, 3].map((n) => (
                               <button
                                 key={n}
-                                onClick={() => setEditTarget({ ...editTarget, _editPeriods: n })}
+                                onClick={() => {
+                                  const c = campuses.find(x => x.id === editTarget._editCampusId)
+                                  const work = c ? calcWorkMinutes(c, n, editTarget._editDate) : 0
+                                  setEditTarget({ ...editTarget, _editPeriods: n, _editWorkMinutes: work })
+                                }}
                                 className="py-3 rounded-xl border-2 font-bold text-base transition-all"
                                 style={editTarget._editPeriods === n
                                   ? { backgroundColor: MAIN_COLOR, borderColor: MAIN_COLOR, color: '#1a1a1a' }
@@ -762,6 +840,48 @@ export default function AdminPage() {
                               </button>
                             ))}
                           </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-600 mb-2">業務時間</label>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => setEditTarget({ ...editTarget, _editWorkMinutes: Math.max(0, editTarget._editWorkMinutes - 5) })}
+                              disabled={editTarget._editPeriods === 0 || editTarget._editWorkMinutes === 0}
+                              className="px-5 py-3 rounded-xl border-2 border-gray-300 font-bold text-gray-700 disabled:opacity-30 hover:bg-gray-50"
+                            >
+                              −5分
+                            </button>
+                            <span className="flex-1 text-center text-3xl font-bold" style={{ color: '#b08800' }}>
+                              {editTarget._editPeriods === 0 ? '0分' : `${editTarget._editWorkMinutes}分`}
+                            </span>
+                            <button
+                              onClick={() => setEditTarget({ ...editTarget, _editWorkMinutes: editTarget._editWorkMinutes + 5 })}
+                              disabled={editTarget._editPeriods === 0}
+                              className="px-5 py-3 rounded-xl border-2 font-bold disabled:opacity-30"
+                              style={{ backgroundColor: MAIN_COLOR, borderColor: MAIN_COLOR }}
+                            >
+                              ＋5分
+                            </button>
+                          </div>
+                          {editTarget._editPeriods > 0 && (() => {
+                            const c = campuses.find(x => x.id === editTarget._editCampusId)
+                            const auto = c ? calcWorkMinutes(c, editTarget._editPeriods, editTarget._editDate) : 0
+                            const isManual = editTarget._editWorkMinutes !== auto
+                            return (
+                              <p className="text-xs text-gray-500 mt-2 text-center">
+                                自動計算：{auto}分
+                                {isManual && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditTarget({ ...editTarget, _editWorkMinutes: auto })}
+                                    className="ml-2 underline hover:text-gray-700"
+                                  >
+                                    自動値に戻す
+                                  </button>
+                                )}
+                              </p>
+                            )
+                          })()}
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-600 mb-2">その他業務時間</label>
@@ -826,6 +946,7 @@ export default function AdminPage() {
                           <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">コマ数</th>
                           <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">業務時間</th>
                           <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">その他時間</th>
+                          <th className="text-left px-4 py-3 text-sm font-bold text-gray-600">メモ</th>
                           <th className="px-4 py-3"></th>
                         </tr>
                       </thead>
@@ -860,6 +981,13 @@ export default function AdminPage() {
                               <td className="px-4 py-4 text-center text-base text-gray-600">
                                 {rec.extra_minutes > 0 ? fmtMin(rec.extra_minutes) : '−'}
                               </td>
+                              <td className="px-4 py-4 text-sm text-gray-700 max-w-[220px]">
+                                {rec.notes ? (
+                                  <p className="line-clamp-2 whitespace-pre-wrap break-words" title={rec.notes}>{rec.notes}</p>
+                                ) : (
+                                  <span className="text-gray-300">−</span>
+                                )}
+                              </td>
                               <td className="px-4 py-4 text-right whitespace-nowrap">
                                 <button
                                   onClick={() => startEdit(rec)}
@@ -887,6 +1015,7 @@ export default function AdminPage() {
                           <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">
                             {selectedTeacher.totalExtraMinutes > 0 ? fmtMin(selectedTeacher.totalExtraMinutes) : '−'}
                           </td>
+                          <td></td>
                           <td></td>
                         </tr>
                       </tfoot>
@@ -1031,6 +1160,7 @@ export default function AdminPage() {
                         <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">コマ数</th>
                         <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">業務時間</th>
                         <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">その他時間</th>
+                        <th className="text-left px-4 py-3 text-sm font-bold text-gray-600">メモ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1059,6 +1189,13 @@ export default function AdminPage() {
                             <td className="px-4 py-4 text-center text-base text-gray-600">
                               {rec.extra_minutes > 0 ? fmtMin(rec.extra_minutes) : '−'}
                             </td>
+                            <td className="px-4 py-4 text-sm text-gray-700 max-w-[220px]">
+                              {rec.notes ? (
+                                <p className="line-clamp-2 whitespace-pre-wrap break-words" title={rec.notes}>{rec.notes}</p>
+                              ) : (
+                                <span className="text-gray-300">−</span>
+                              )}
+                            </td>
                           </tr>
                         )
                       })}
@@ -1071,6 +1208,7 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">
                           {totalExtra > 0 ? fmtMin(totalExtra) : '−'}
                         </td>
+                        <td></td>
                       </tr>
                     </tfoot>
                   </table>
