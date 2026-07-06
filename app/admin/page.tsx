@@ -53,6 +53,16 @@ function formatDate(d: string) {
   return `${date.getMonth() + 1}月${date.getDate()}日（${day}）`
 }
 
+// 新規追加フォームを開くときの既定日：
+// 表示中が当月なら今日、それ以外の月はその月の1日を返す。
+// （日付ピッカーが表示中の月で開くようにして、月の取り違えを防ぐ）
+function defaultDateForMonth(year: number, month: number): string {
+  const todayYear = Number(TODAY_JST.slice(0, 4))
+  const todayMonth = Number(TODAY_JST.slice(5, 7))
+  if (year === todayYear && month === todayMonth) return TODAY_JST
+  return `${year}-${String(month).padStart(2, '0')}-01`
+}
+
 function calcWorkMinutes(campus: Campus, periods: number, dateStr: string): number {
   if (periods === 0) return 0
   const dow = new Date(dateStr + 'T00:00:00').getDay()
@@ -76,6 +86,7 @@ export default function AdminPage() {
   const [allTeachers, setAllTeachers] = useState<SimpleTeacher[]>([])
   const [summaries, setSummaries] = useState<TeacherSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [selectedTeacher, setSelectedTeacher] = useState<TeacherSummary | null>(null)
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null)
   const [saving, setSaving] = useState(false)
@@ -106,8 +117,8 @@ export default function AdminPage() {
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth() + 1)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  const fetchData = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     const mm = String(month).padStart(2, '0')
     const firstDay = `${year}-${mm}-01`
     const lastDayNum = new Date(year, month, 0).getDate()
@@ -144,7 +155,7 @@ export default function AdminPage() {
       return updated ?? { ...prev, totalPeriods: 0, totalWorkMinutes: 0, totalExtraMinutes: 0, records: [] }
     })
 
-    setLoading(false)
+    if (!opts?.silent) setLoading(false)
   }, [year, month])
 
   useEffect(() => {
@@ -169,6 +180,27 @@ export default function AdminPage() {
 
     fetchData()
   }, [router, fetchData])
+
+  // タブに戻ってきたとき（他画面・他端末での追加/編集を反映するため）静かに再取得する。
+  // 大きな読み込み表示は出さず、編集中のフォーム状態にも触れない。
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchData({ silent: true })
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [fetchData])
+
+  // 手動更新ボタン用：ボタンにだけ状態を出して静かに再取得する。
+  const handleManualRefresh = async () => {
+    setRefreshing(true)
+    await fetchData({ silent: true })
+    setRefreshing(false)
+  }
 
   const changeMonth = (delta: number) => {
     let m = month + delta
@@ -341,9 +373,10 @@ export default function AdminPage() {
 
     if (error) { setErrorBanner('追加に失敗しました'); setAddSaving(false); return }
     setIsAdding(false)
+    const resetDate = defaultDateForMonth(year, month)
     const resetCampusId = campuses[0]?.id ?? ''
-    const resetWork = campuses[0] ? calcWorkMinutes(campuses[0], 1, TODAY_JST) : 0
-    setNewRecord({ date: TODAY_JST, campusId: resetCampusId, periods: 1, workMinutes: resetWork, extraMinutes: 0, notes: '' })
+    const resetWork = campuses[0] ? calcWorkMinutes(campuses[0], 1, resetDate) : 0
+    setNewRecord({ date: resetDate, campusId: resetCampusId, periods: 1, workMinutes: resetWork, extraMinutes: 0, notes: '' })
     setAddSaving(false)
     await fetchData()
   }
@@ -436,6 +469,17 @@ export default function AdminPage() {
             </button>
           </div>
           <div className="flex-1" />
+          <button
+            onClick={handleManualRefresh}
+            disabled={loading || refreshing}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 text-sm font-bold disabled:opacity-40 text-gray-600 border-gray-300 bg-white hover:bg-gray-50"
+          >
+            <span
+              className={`block w-4 h-4 border-2 border-gray-300 rounded-full ${refreshing ? 'animate-spin' : ''}`}
+              style={{ borderTopColor: '#6b7280' }}
+            />
+            {refreshing ? '更新中...' : '最新に更新'}
+          </button>
           <button
             onClick={downloadMonthCsv}
             disabled={loading || summaries.length === 0}
@@ -550,9 +594,10 @@ export default function AdminPage() {
                     )}
                     <button
                       onClick={() => {
+                        const defaultDate = defaultDateForMonth(year, month)
                         const c = campuses.find(x => x.id === newRecord.campusId) ?? campuses[0]
-                        const work = c ? calcWorkMinutes(c, newRecord.periods, newRecord.date) : 0
-                        setNewRecord(prev => ({ ...prev, workMinutes: work }))
+                        const work = c ? calcWorkMinutes(c, newRecord.periods, defaultDate) : 0
+                        setNewRecord(prev => ({ ...prev, date: defaultDate, workMinutes: work }))
                         setIsAdding(true)
                         setEditTarget(null)
                       }}
