@@ -6,12 +6,27 @@ import { supabase } from '@/lib/supabase'
 import type { LoggedInTeacher, Campus } from '@/types'
 
 const MAIN_COLOR = '#F5C200'
-const TODAY = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
-const TODAY_DOW = new Date(TODAY + 'T00:00:00').getDay() // 0=日, 4=木
-const TODAY_LABEL = (() => {
-  const d = new Date(TODAY + 'T00:00:00')
+
+// 日付は固定値にせず都度計算する。PWAでページが再読み込みされないまま日をまたぐと、
+// 開いた時点の古い日付で送信されてしまうため（給与集計がズレる）。
+function getTodayJST(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
+}
+function dowOf(dateStr: string): number {
+  return new Date(dateStr + 'T00:00:00').getDay() // 0=日, 4=木
+}
+function dateLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
   return `${d.getMonth() + 1}月${d.getDate()}日（${'日月火水木金土'[d.getDay()]}）`
-})()
+}
+
+// 業務時間 = コマ数×cleanup_minutes分。東校(GC)・前原駅前校の木曜は最低30分
+function calcWorkMinutes(campus: Campus, periods: number, dateStr: string): number {
+  if (periods === 0) return 0
+  const base = periods * campus.cleanup_minutes
+  const thursdayMin30 = dowOf(dateStr) === 4 && (campus.name === '東校(GC)' || campus.name === '前原駅前校')
+  return thursdayMin30 ? Math.max(base, 30) : base
+}
 
 function fmtMin(min: number): string {
   if (min === 0) return '0分'
@@ -46,6 +61,7 @@ export default function AttendancePage() {
   const [extraMinutes, setExtraMinutes] = useState(0)
   const [duplicateError, setDuplicateError] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [today, setToday] = useState(getTodayJST)
   const periodSectionRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
@@ -73,15 +89,30 @@ export default function AttendancePage() {
     }
   }, [selectedCampus])
 
+  // 表示中の日付を最新化する（タブに戻ったとき・ウィンドウがフォーカスされたとき）。
+  // マウント時は useState(getTodayJST) で既に今日になっているため、ここでは購読のみ。
+  // 日をまたいでアプリを開きっぱなしにしても、戻ってくれば正しい今日の日付に更新される。
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') setToday(getTodayJST())
+    }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
+
+  const todayDow = dowOf(today)
+  const todayLabel = dateLabel(today)
   // 業務時間 = 1コマ×cleanup_minutes分。東校(GC)・前原駅前校の木曜は最低30分
   const thursdayMin30 = selectedCampus !== null
-    && TODAY_DOW === 4
+    && todayDow === 4
     && (selectedCampus.name === '東校(GC)' || selectedCampus.name === '前原駅前校')
-  const workMinutes = (() => {
-    if (!selectedCampus || selectedPeriods == null || selectedPeriods === 0) return 0
-    const base = selectedPeriods * selectedCampus.cleanup_minutes
-    return thursdayMin30 ? Math.max(base, 30) : base
-  })()
+  const workMinutes = selectedCampus && selectedPeriods != null
+    ? calcWorkMinutes(selectedCampus, selectedPeriods, today)
+    : 0
 
   const canConfirm = selectedCampus !== null && selectedPeriods !== null
 
@@ -91,13 +122,18 @@ export default function AttendancePage() {
     setDuplicateError(false)
     setSubmitError(null)
 
+    // 送信する瞬間の日付・業務時間を計算し直す（開いた時点の古い日付では登録しない）
+    const submitDate = getTodayJST()
+    setToday(submitDate)
+    const submitWorkMinutes = calcWorkMinutes(selectedCampus, selectedPeriods, submitDate)
+
     // 重複チェック：同じ先生・同じ校舎・同じ日
     const { data: existing } = await supabase
       .from('soroban_attendances')
       .select('id')
       .eq('teacher_id', teacher.id)
       .eq('campus_id', selectedCampus.id)
-      .eq('date', TODAY)
+      .eq('date', submitDate)
       .maybeSingle()
 
     if (existing) {
@@ -109,10 +145,10 @@ export default function AttendancePage() {
 
     const { error } = await supabase.from('soroban_attendances').insert({
       teacher_id: teacher.id,
-      date: TODAY,
+      date: submitDate,
       campus_id: selectedCampus.id,
       periods: selectedPeriods,
-      work_minutes: workMinutes,
+      work_minutes: submitWorkMinutes,
       extra_minutes: extraMinutes,
       notes: null,
     })
@@ -211,7 +247,7 @@ export default function AttendancePage() {
             <p className="text-6xl mb-1">✅</p>
             <p className="text-2xl font-bold text-gray-800">送信しました</p>
             <div className="bg-gray-50 rounded-xl divide-y divide-gray-200 text-left">
-              <Row label="日付" value={TODAY_LABEL} />
+              <Row label="日付" value={todayLabel} />
               <Row label="校舎" value={selectedCampus.name} />
               <Row label="コマ数" value={selectedPeriods === 0 ? '授業なし' : `${selectedPeriods}コマ`} />
               <Row label="業務時間" value={fmtMin(workMinutes)} />
@@ -241,7 +277,7 @@ export default function AttendancePage() {
           <div className="space-y-4">
             <h2 className="text-2xl font-bold text-gray-800 text-center">入力内容の確認</h2>
             <div className="bg-white rounded-2xl shadow divide-y divide-gray-100">
-              <Row label="日付" value={TODAY_LABEL} />
+              <Row label="日付" value={todayLabel} />
               <Row label="校舎" value={selectedCampus.name} />
               <Row label="授業コマ数" value={selectedPeriods === 0 ? '授業なし' : `${selectedPeriods}コマ`} />
               <Row label="業務時間" value={fmtMin(workMinutes)} note="授業準備・片付け含む" />
@@ -286,7 +322,7 @@ export default function AttendancePage() {
             {/* 今日の日付 */}
             <div className="bg-white rounded-2xl shadow px-5 py-4 text-center">
               <p className="text-gray-500 text-base">勤務日</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{TODAY_LABEL}</p>
+              <p className="text-2xl font-bold text-gray-800 mt-1">{todayLabel}</p>
             </div>
 
             {/* 校舎選択 */}
