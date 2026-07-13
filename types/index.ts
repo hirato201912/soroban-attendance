@@ -25,5 +25,5 @@ export type SorobanAttendance = {
 
 export type AttendanceWithRelations = SorobanAttendance & {
   teacher: { id: string; name: string; code: number }
-  campus: { id: string; name: string; minutes_per_period: number }
+  campus: { id: string; name: string; cleanup_minutes: number }
 }

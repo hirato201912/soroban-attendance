@@ -117,19 +117,29 @@ export default function AdminPage() {
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth() + 1)
 
-  const fetchData = useCallback(async (opts?: { silent?: boolean }) => {
+  const fetchData = useCallback(async (opts?: { silent?: boolean }): Promise<boolean> => {
     if (!opts?.silent) setLoading(true)
     const mm = String(month).padStart(2, '0')
     const firstDay = `${year}-${mm}-01`
     const lastDayNum = new Date(year, month, 0).getDate()
     const lastDay = `${year}-${mm}-${String(lastDayNum).padStart(2, '0')}`
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('soroban_attendances')
       .select('*, teacher:itoshima_teachers(id, name, code), campus:soroban_campuses(id, name, cleanup_minutes)')
       .gte('date', firstDay)
       .lte('date', lastDay)
       .order('date', { ascending: true })
+
+    // 取得に失敗したら画面の表示は書き換えない
+    // （空データで上書きすると、全記録が消えたように見えてしまうため）
+    if (error) {
+      if (!opts?.silent) {
+        setErrorBanner('データの取得に失敗しました。通信状況を確認して「最新に更新」を押してください。')
+        setLoading(false)
+      }
+      return false
+    }
 
     const records = (data as AttendanceWithRelations[]) ?? []
 
@@ -156,6 +166,7 @@ export default function AdminPage() {
     })
 
     if (!opts?.silent) setLoading(false)
+    return true
   }, [year, month])
 
   useEffect(() => {
@@ -198,7 +209,9 @@ export default function AdminPage() {
   // 手動更新ボタン用：ボタンにだけ状態を出して静かに再取得する。
   const handleManualRefresh = async () => {
     setRefreshing(true)
-    await fetchData({ silent: true })
+    const ok = await fetchData({ silent: true })
+    if (!ok) setErrorBanner('更新に失敗しました。通信状況を確認して、もう一度お試しください。')
+    else setErrorBanner(null)
     setRefreshing(false)
   }
 
@@ -577,8 +590,8 @@ export default function AdminPage() {
                   <div>
                     <p className="text-xl font-bold text-gray-800">{selectedTeacher.name} 先生</p>
                     <p className="text-sm text-gray-500 mt-0.5">
-                      {selectedTeacher.totalPeriods > 0
-                        ? <>合計 {selectedTeacher.totalPeriods}コマ　業務 {fmtMin(selectedTeacher.totalWorkMinutes)}{selectedTeacher.totalExtraMinutes > 0 && `　その他 ${fmtMin(selectedTeacher.totalExtraMinutes)}`}</>
+                      {selectedTeacher.records.length > 0
+                        ? <><span className="text-lg font-bold" style={{ color: '#b08800' }}>勤務 {new Set(selectedTeacher.records.map(r => r.date)).size}日</span>　合計 {selectedTeacher.totalPeriods}コマ　業務 {fmtMin(selectedTeacher.totalWorkMinutes)}{selectedTeacher.totalExtraMinutes > 0 && `　その他 ${fmtMin(selectedTeacher.totalExtraMinutes)}`}</>
                         : 'この月の記録はありません'
                       }
                     </p>
@@ -1054,7 +1067,9 @@ export default function AdminPage() {
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-gray-300" style={{ backgroundColor: '#FFF9E0' }}>
-                          <td colSpan={2} className="px-6 py-3 text-sm font-bold text-gray-700">月合計</td>
+                          <td colSpan={2} className="px-6 py-3 text-sm font-bold text-gray-700">
+                            月合計（<span style={{ color: '#b08800' }}>勤務 {new Set(selectedTeacher.records.map(r => r.date)).size}日</span>）
+                          </td>
                           <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">{selectedTeacher.totalPeriods}コマ</td>
                           <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">{fmtMin(selectedTeacher.totalWorkMinutes)}</td>
                           <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">

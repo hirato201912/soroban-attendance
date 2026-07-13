@@ -35,6 +35,7 @@ export default function HistoryPage() {
   const [teacher, setTeacher] = useState<LoggedInTeacher | null>(null)
   const [records, setRecords] = useState<AttendanceWithRelations[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -43,9 +44,12 @@ export default function HistoryPage() {
   const fetchRecords = useCallback(async (teacherId: string) => {
     setLoading(true)
     const firstDay = `${year}-${String(month).padStart(2, '0')}-01`
-    const lastDay = new Date(year, month, 0).toISOString().split('T')[0]
+    // 月末日は文字列で組み立てる。toISOString() は UTC 基準のため日本時間では
+    // 1日前になり、月末日の記録が表示から漏れてしまう
+    const lastDayNum = new Date(year, month, 0).getDate()
+    const lastDay = `${year}-${String(month).padStart(2, '0')}-${String(lastDayNum).padStart(2, '0')}`
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('soroban_attendances')
       .select('*, teacher:itoshima_teachers(id, name, code), campus:soroban_campuses(id, name, cleanup_minutes)')
       .eq('teacher_id', teacherId)
@@ -53,7 +57,9 @@ export default function HistoryPage() {
       .lte('date', lastDay)
       .order('date', { ascending: false })
 
-    setRecords((data as AttendanceWithRelations[]) ?? [])
+    // 取得失敗を「記録なし」と区別する（誤って「記録はありません」と出さない）
+    setLoadError(!!error)
+    setRecords(error ? [] : ((data as AttendanceWithRelations[]) ?? []))
     setLoading(false)
   }, [year, month])
 
@@ -187,6 +193,11 @@ export default function HistoryPage() {
               style={{ borderTopColor: '#F5C200' }}
             />
             <span className="text-lg text-gray-500">読み込み中</span>
+          </div>
+        ) : loadError ? (
+          <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-6 text-center">
+            <p className="text-red-600 font-bold text-lg">読み込みに失敗しました</p>
+            <p className="text-red-400 text-base mt-1">通信状況を確認して、月を切り替え直してみてください</p>
           </div>
         ) : sortedDates.length === 0 ? (
           <p className="text-center text-xl text-gray-400 py-10">この月の記録はありません</p>
