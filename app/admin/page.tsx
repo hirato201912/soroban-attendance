@@ -405,8 +405,8 @@ export default function AdminPage() {
 
   // 今月の全講師レコードを CSV ダウンロード（画面表示と同じ見た目）
   const downloadMonthCsv = () => {
-    const headers = ['講師コード', '講師名', '日付', '校舎', 'コマ数', '業務時間', 'その他業務時間']
-    type Row = { code: number; name: string; date: string; campus: string; periods: string; work: string; extra: string }
+    const headers = ['講師コード', '講師名', '日付', '校舎', 'コマ数', '業務時間', 'その他業務時間', '合計業務時間']
+    type Row = { code: number; name: string; date: string; campus: string; periods: string; work: string; extra: string; total: string }
     const rows: Row[] = []
     for (const t of summaries) {
       for (const r of t.records) {
@@ -418,12 +418,13 @@ export default function AdminPage() {
           periods: r.periods === 0 ? '授業なし' : `${r.periods}コマ`,
           work: r.work_minutes > 0 ? fmtMin(r.work_minutes) : '−',
           extra: r.extra_minutes > 0 ? fmtMin(r.extra_minutes) : '−',
+          total: fmtMin(r.work_minutes + r.extra_minutes),
         })
       }
     }
     rows.sort((a, b) => a.code - b.code || a.date.localeCompare(b.date))
     const escape = (s: string) => /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-    const body = rows.map(r => [String(r.code), r.name, formatDate(r.date), r.campus, r.periods, r.work, r.extra])
+    const body = rows.map(r => [String(r.code), r.name, formatDate(r.date), r.campus, r.periods, r.work, r.extra, r.total])
     const csv = [headers, ...body].map(row => row.map(escape).join(',')).join('\r\n')
     // Excel が UTF-8 として正しく開けるよう BOM を先頭に付与
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
@@ -563,9 +564,13 @@ export default function AdminPage() {
                     <p className="font-bold text-gray-800 text-lg">{t.name}</p>
                     {s ? (
                       <div className="mt-1 text-sm text-gray-500 space-y-0.5">
-                        <p>{s.totalPeriods}コマ　業務 {fmtMin(s.totalWorkMinutes)}</p>
-                        {s.totalExtraMinutes > 0 && <p>その他 {fmtMin(s.totalExtraMinutes)}</p>}
-                        <p>{new Set(s.records.map(r => r.date)).size}日勤務</p>
+                        <p className="font-bold" style={{ color: '#b08800' }}>
+                          勤務 {new Set(s.records.map(r => r.date)).size}日　業務時間 {fmtMin(s.totalWorkMinutes + s.totalExtraMinutes)}
+                        </p>
+                        <p className="text-xs">
+                          {s.totalPeriods}コマ　（内訳：業務 {fmtMin(s.totalWorkMinutes)}
+                          {s.totalExtraMinutes > 0 && ` ＋ その他 ${fmtMin(s.totalExtraMinutes)}`}）
+                        </p>
                       </div>
                     ) : (
                       <p className="mt-1 text-sm text-gray-400">この月の記録なし</p>
@@ -589,12 +594,31 @@ export default function AdminPage() {
                 <div className="bg-white rounded-2xl shadow px-6 py-4 flex items-center justify-between">
                   <div>
                     <p className="text-xl font-bold text-gray-800">{selectedTeacher.name} 先生</p>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      {selectedTeacher.records.length > 0
-                        ? <><span className="text-lg font-bold" style={{ color: '#b08800' }}>勤務 {new Set(selectedTeacher.records.map(r => r.date)).size}日</span>　合計 {selectedTeacher.totalPeriods}コマ　業務 {fmtMin(selectedTeacher.totalWorkMinutes)}{selectedTeacher.totalExtraMinutes > 0 && `　その他 ${fmtMin(selectedTeacher.totalExtraMinutes)}`}</>
-                        : 'この月の記録はありません'
-                      }
-                    </p>
+                    {selectedTeacher.records.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <div className="rounded-xl px-4 py-2" style={{ backgroundColor: '#FFF9E0' }}>
+                          <p className="text-xs font-bold text-gray-500">{month}月の勤務日数</p>
+                          <p className="text-xl font-bold" style={{ color: '#b08800' }}>
+                            {new Set(selectedTeacher.records.map(r => r.date)).size}日
+                          </p>
+                        </div>
+                        <div className="rounded-xl px-4 py-2" style={{ backgroundColor: '#FFF9E0' }}>
+                          <p className="text-xs font-bold text-gray-500">{month}月の業務時間（その他込み）</p>
+                          <p className="text-xl font-bold" style={{ color: '#b08800' }}>
+                            {fmtMin(selectedTeacher.totalWorkMinutes + selectedTeacher.totalExtraMinutes)}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            業務 {fmtMin(selectedTeacher.totalWorkMinutes)} ＋ その他 {fmtMin(selectedTeacher.totalExtraMinutes)}
+                          </p>
+                        </div>
+                        <div className="rounded-xl px-4 py-2 bg-gray-50">
+                          <p className="text-xs font-bold text-gray-500">{month}月のコマ数</p>
+                          <p className="text-xl font-bold text-gray-700">{selectedTeacher.totalPeriods}コマ</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 mt-0.5">この月の記録はありません</p>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     {editTarget && (
@@ -646,8 +670,10 @@ export default function AdminPage() {
                                 {name}
                               </p>
                               <p className="text-xs text-gray-600 mt-1 pl-4">
-                                {sub.periods}コマ　業務 {fmtMin(sub.workMin)}
-                                {sub.extraMin > 0 && `　その他 ${fmtMin(sub.extraMin)}`}
+                                {sub.periods}コマ　業務時間 <span className="font-bold">{fmtMin(sub.workMin + sub.extraMin)}</span>
+                              </p>
+                              <p className="text-xs text-gray-500 pl-4">
+                                （業務 {fmtMin(sub.workMin)}{sub.extraMin > 0 && ` ＋ その他 ${fmtMin(sub.extraMin)}`}）
                               </p>
                             </div>
                           )
@@ -1004,6 +1030,7 @@ export default function AdminPage() {
                           <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">コマ数</th>
                           <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">業務時間</th>
                           <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">その他時間</th>
+                          <th className="text-center px-4 py-3 text-sm font-bold" style={{ color: '#b08800' }}>合計</th>
                           <th className="text-left px-4 py-3 text-sm font-bold text-gray-600">メモ</th>
                           <th className="px-4 py-3"></th>
                         </tr>
@@ -1038,6 +1065,9 @@ export default function AdminPage() {
                               </td>
                               <td className="px-4 py-4 text-center text-base text-gray-600">
                                 {rec.extra_minutes > 0 ? fmtMin(rec.extra_minutes) : '−'}
+                              </td>
+                              <td className="px-4 py-4 text-center text-base font-bold" style={{ color: '#b08800' }}>
+                                {fmtMin(rec.work_minutes + rec.extra_minutes)}
                               </td>
                               <td className="px-4 py-4 text-sm text-gray-700 max-w-[220px]">
                                 {rec.notes ? (
@@ -1075,8 +1105,12 @@ export default function AdminPage() {
                           <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">
                             {selectedTeacher.totalExtraMinutes > 0 ? fmtMin(selectedTeacher.totalExtraMinutes) : '−'}
                           </td>
-                          <td></td>
-                          <td></td>
+                          <td className="px-4 py-3 text-center text-base font-bold" style={{ color: '#b08800' }}>
+                            {fmtMin(selectedTeacher.totalWorkMinutes + selectedTeacher.totalExtraMinutes)}
+                          </td>
+                          <td colSpan={2} className="px-4 py-3 text-sm text-gray-500">
+                            業務時間の合計（その他業務時間を含む）
+                          </td>
                         </tr>
                       </tfoot>
                     </table>
@@ -1220,6 +1254,7 @@ export default function AdminPage() {
                         <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">コマ数</th>
                         <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">業務時間</th>
                         <th className="text-center px-4 py-3 text-sm font-bold text-gray-600">その他時間</th>
+                        <th className="text-center px-4 py-3 text-sm font-bold" style={{ color: '#b08800' }}>合計</th>
                         <th className="text-left px-4 py-3 text-sm font-bold text-gray-600">メモ</th>
                       </tr>
                     </thead>
@@ -1249,6 +1284,9 @@ export default function AdminPage() {
                             <td className="px-4 py-4 text-center text-base text-gray-600">
                               {rec.extra_minutes > 0 ? fmtMin(rec.extra_minutes) : '−'}
                             </td>
+                            <td className="px-4 py-4 text-center text-base font-bold" style={{ color: '#b08800' }}>
+                              {fmtMin(rec.work_minutes + rec.extra_minutes)}
+                            </td>
                             <td className="px-4 py-4 text-sm text-gray-700 max-w-[220px]">
                               {rec.notes ? (
                                 <p className="line-clamp-2 whitespace-pre-wrap break-words" title={rec.notes}>{rec.notes}</p>
@@ -1268,7 +1306,10 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-center text-sm font-bold text-gray-800">
                           {totalExtra > 0 ? fmtMin(totalExtra) : '−'}
                         </td>
-                        <td></td>
+                        <td className="px-4 py-3 text-center text-base font-bold" style={{ color: '#b08800' }}>
+                          {fmtMin(totalWork + totalExtra)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">その他込み</td>
                       </tr>
                     </tfoot>
                   </table>
