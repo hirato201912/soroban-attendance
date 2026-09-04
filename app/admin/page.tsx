@@ -596,11 +596,9 @@ export default function AdminPage() {
                     <p className="text-xl font-bold text-gray-800">{selectedTeacher.name} 先生</p>
                     {selectedTeacher.records.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <div className="rounded-xl px-4 py-2" style={{ backgroundColor: '#FFF9E0' }}>
-                          <p className="text-xs font-bold text-gray-500">{month}月の勤務日数</p>
-                          <p className="text-xl font-bold" style={{ color: '#b08800' }}>
-                            {new Set(selectedTeacher.records.map(r => r.date)).size}日
-                          </p>
+                        <div className="rounded-xl px-4 py-2 bg-gray-50">
+                          <p className="text-xs font-bold text-gray-500">{month}月のコマ数</p>
+                          <p className="text-xl font-bold text-gray-700">{selectedTeacher.totalPeriods}コマ</p>
                         </div>
                         <div className="rounded-xl px-4 py-2" style={{ backgroundColor: '#FFF9E0' }}>
                           <p className="text-xs font-bold text-gray-500">{month}月の業務時間（その他込み）</p>
@@ -611,9 +609,11 @@ export default function AdminPage() {
                             業務 {fmtMin(selectedTeacher.totalWorkMinutes)} ＋ その他 {fmtMin(selectedTeacher.totalExtraMinutes)}
                           </p>
                         </div>
-                        <div className="rounded-xl px-4 py-2 bg-gray-50">
-                          <p className="text-xs font-bold text-gray-500">{month}月のコマ数</p>
-                          <p className="text-xl font-bold text-gray-700">{selectedTeacher.totalPeriods}コマ</p>
+                        <div className="rounded-xl px-4 py-2" style={{ backgroundColor: '#FFF9E0' }}>
+                          <p className="text-xs font-bold text-gray-500">{month}月の勤務日数</p>
+                          <p className="text-xl font-bold" style={{ color: '#b08800' }}>
+                            {new Set(selectedTeacher.records.map(r => r.date)).size}日
+                          </p>
                         </div>
                       </div>
                     ) : (
